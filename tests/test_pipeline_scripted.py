@@ -144,6 +144,53 @@ def fake_transcribe_improvised(path, source_id, language=None):
     return cues, words
 
 
+class TestTemplateSafety:
+    def test_refuses_install_without_usable_template(self, tmp_path):
+        """쓸 만한 템플릿이 없으면 깨진 프로젝트를 등록하는 대신 실패한다."""
+        root = tmp_path / "com.lveditor.draft"
+        root.mkdir()
+        (root / "root_meta_info.json").write_text(
+            json.dumps({"all_draft_store": [], "draft_ids": 0}),
+            encoding="utf-8")
+        with pytest.raises(ValueError, match="템플릿"):
+            pipeline.run_scripted(
+                "C:/videos/촬영본.mp4", ROW,
+                project_name="테스트", projects_root=str(root),
+                transcribe_words_fn=fake_transcribe_words,
+                probe_duration_fn=lambda p: 100.0,
+                probe_resolution_fn=lambda p: (1080, 1920),
+                running_check=lambda: False,
+                media_resolver=lambda p, progress=None: p)
+
+    def test_skips_broken_template_candidate(self, env, tmp_path):
+        """최소 골격(프로토타입 없음) 프로젝트가 최신이어도 건너뛰고
+        실제 스키마 프로젝트를 템플릿으로 쓴다."""
+        import time
+        broken = os.path.join(env, "깨진프로젝트")
+        os.makedirs(broken)
+        with open(os.path.join(broken, "draft_content.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"tracks": [], "materials": {}}, f)
+        # 깨진 쪽이 더 최신이 되도록
+        future = time.time() + 100
+        os.utime(os.path.join(broken, "draft_content.json"), (future, future))
+
+        logs = []
+        out = pipeline.run_scripted(
+            "C:/videos/촬영본.mp4", ROW,
+            project_name="르디테_여름2", projects_root=env,
+            progress=logs.append,
+            transcribe_words_fn=fake_transcribe_words,
+            probe_duration_fn=lambda p: 100.0,
+            probe_resolution_fn=lambda p: (1080, 1920),
+            running_check=lambda: False,
+            media_resolver=lambda p, progress=None: p)
+        assert any("건너뜀" in m for m in logs)
+        draft = json.load(open(os.path.join(out, "draft_content.json"),
+                               encoding="utf-8"))
+        assert draft["new_version"] == "175.0.0"  # 실제 스키마 템플릿 사용
+
+
 class TestAutocutFallback:
     def test_falls_back_when_speech_differs_from_script(self, env):
         logs = []

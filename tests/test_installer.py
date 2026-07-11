@@ -126,6 +126,41 @@ class TestRegisterDraft:
                 _draft(), projects_root, register=True,
                 running_check=lambda: True)
 
+    def test_register_rechecks_running_at_write_time(self, projects_root):
+        """긴 작업(STT) 후 캡컷이 다시 켜졌으면 등록 직전에 중단한다."""
+        project_dir = os.path.join(projects_root, "새프로젝트")
+        meta = installer.write_project_files(_draft(), project_dir,
+                                             now_us=NOW_US)
+        with pytest.raises(installer.CapCutRunningError):
+            installer.register_draft(projects_root, project_dir, meta,
+                                     running_check=lambda: True)
+
+    def test_cloud_fields_reset_on_clone(self, projects_root):
+        """클라우드 드래프트를 복제 원본으로 써도 클라우드 흔적은 비워진다."""
+        root_meta_path = os.path.join(projects_root, "root_meta_info.json")
+        rm = json.load(open(root_meta_path, encoding="utf-8"))
+        rm["all_draft_store"][0].update({
+            "draft_is_cloud_temp_draft": True,
+            "tm_draft_cloud_entry_id": 987654,
+            "draft_cloud_template_id": "cloud-x",
+        })
+        json.dump(rm, open(root_meta_path, "w", encoding="utf-8"))
+        self._install(projects_root)
+        rm2 = json.load(open(root_meta_path, encoding="utf-8"))
+        new_entry = rm2["all_draft_store"][0]
+        assert new_entry["draft_name"] == "새프로젝트"
+        assert new_entry["draft_is_cloud_temp_draft"] is False
+        assert new_entry["tm_draft_cloud_entry_id"] == 0
+        assert new_entry["draft_cloud_template_id"] == ""
+
+    def test_root_meta_write_is_atomic(self, projects_root):
+        """쓰기는 임시 파일 → 교체 방식 (잔여 .tmp 없음, 파싱 가능)."""
+        self._install(projects_root)
+        assert not os.path.exists(os.path.join(
+            projects_root, "root_meta_info.json.tmp"))
+        json.load(open(os.path.join(projects_root, "root_meta_info.json"),
+                       encoding="utf-8"))
+
     def test_no_register_skips_root_meta(self, projects_root):
         self._install(projects_root, register=False)
         root_meta = json.load(open(

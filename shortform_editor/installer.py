@@ -49,10 +49,11 @@ class CapCutRunningError(RuntimeError):
 
 def capcut_running() -> bool:
     """CapCut.exe 프로세스가 떠 있는지 확인 (Windows)."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         out = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"],
-            capture_output=True, timeout=15).stdout
+            capture_output=True, timeout=15, creationflags=flags).stdout
     except (OSError, subprocess.SubprocessError):
         return False
     return b"CapCut.exe" in (out or b"")
@@ -63,11 +64,38 @@ def _now_us() -> int:
 
 
 def _dump_json(data: dict, path: str, compact: bool = False) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+    """원자적 JSON 쓰기 — 중간에 죽어도 기존 파일이 반쯤 잘린 채 남지 않는다.
+
+    root_meta_info.json이 잘리면 캡컷 프로젝트 목록 전체가 유실되므로,
+    임시 파일에 완전히 쓴 뒤 os.replace로 교체한다.
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         if compact:
             json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
         else:
             json.dump(data, f, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _reset_cloud_fields(d: dict) -> None:
+    """복제한 메타/엔트리에서 클라우드 동기화 흔적을 타입 보존형으로 초기화한다.
+
+    템플릿이 클라우드 드래프트였을 경우 그 클라우드 id들을 물려받으면
+    캡컷이 새 프로젝트를 클라우드 드래프트로 오인할 수 있다.
+    """
+    for k, v in d.items():
+        if k.startswith(("draft_cloud", "tm_draft_cloud", "cloud_")):
+            if isinstance(v, bool):
+                d[k] = False
+            elif isinstance(v, (int, float)):
+                d[k] = 0
+            elif isinstance(v, str):
+                d[k] = ""
+    if "draft_is_cloud_temp_draft" in d:
+        d["draft_is_cloud_temp_draft"] = False
 
 
 def write_project_files(
@@ -135,6 +163,7 @@ def write_project_files(
             if isinstance(item, dict) else item
             for item in meta["draft_materials"]
         ]
+    _reset_cloud_fields(meta)
     _dump_json(meta, os.path.join(project_dir, "draft_meta_info.json"))
     return meta
 
@@ -145,11 +174,17 @@ def register_draft(
     meta: dict,
     backup_dir: Optional[str] = None,
     now_us: Optional[int] = None,
+    running_check: Callable[[], bool] = capcut_running,
 ) -> str:
     """root_meta_info.json에 새 드래프트를 등록한다. 백업 파일 경로를 반환.
 
-    호출 전 캡컷이 종료돼 있어야 한다 (install_project()가 확인).
+    STT 등 긴 작업이 끝난 '지금' 시점에 캡컷이 다시 켜졌을 수 있으므로,
+    쓰기 직전에 한 번 더 확인한다 (켜진 채 수정하면 종료 시 덮어써 유실).
     """
+    if running_check():
+        raise CapCutRunningError(
+            "CapCut이 실행 중이라 등록을 중단했습니다. 프로젝트 파일은 만들어졌으니 "
+            "캡컷을 완전히 닫고 다시 실행하면 등록됩니다.")
     now_us = now_us or _now_us()
     root_meta_path = os.path.join(projects_root, "root_meta_info.json")
     if not os.path.isfile(root_meta_path):
@@ -171,14 +206,18 @@ def register_draft(
 
     name = meta.get("draft_name", os.path.basename(project_dir))
     # 이미 등록된 같은 이름이 있으면 갱신, 없으면 기존 엔트리 복제
+    # (복제 원본은 클라우드 임시 드래프트가 아닌 로컬 엔트리를 우선)
     existing = next((e for e in store if e.get("draft_name") == name), None)
     if existing is not None:
         entry = existing
         store.remove(existing)
     elif store:
-        entry = copy.deepcopy(store[0])
+        local = next((e for e in store
+                      if not e.get("draft_is_cloud_temp_draft")), store[0])
+        entry = copy.deepcopy(local)
     else:
         entry = {}
+    _reset_cloud_fields(entry)
 
     # 캡컷 실측 포맷: 폴더는 포워드 슬래시, 파일은 '\\'로 이어붙는 혼합형
     fold = os.path.normpath(project_dir).replace("\\", "/")
@@ -240,7 +279,8 @@ def install_project(
     meta = write_project_files(draft, project_dir, scaffold_dir, now_us=now_us)
     if register:
         register_draft(projects_root, project_dir, meta,
-                       backup_dir=backup_dir, now_us=now_us)
+                       backup_dir=backup_dir, now_us=now_us,
+                       running_check=running_check)
     return project_dir
 
 

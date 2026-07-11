@@ -394,12 +394,14 @@ class App(ttk.Frame):
                 )
             self._last_output = out
             self._log_msg("✅ CapCut을 열면 프로젝트가 보입니다.")
-            self.open_btn.configure(state="normal")
+            # tkinter는 스레드 안전하지 않다 — 위젯 갱신은 메인 스레드로
+            self.after(0, lambda: self.open_btn.configure(state="normal"))
         except Exception as e:  # noqa: BLE001 - 사용자에게 그대로 노출
-            self._log_msg(f"❌ 오류: {e}")
-            messagebox.showerror("실패", str(e))
+            msg = str(e)
+            self._log_msg(f"❌ 오류: {msg}")
+            self.after(0, lambda: messagebox.showerror("실패", msg))
         finally:
-            self.run_btn.configure(state="normal")
+            self.after(0, lambda: self.run_btn.configure(state="normal"))
 
     def _open_output(self) -> None:
         if not self._last_output:

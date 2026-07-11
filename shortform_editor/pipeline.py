@@ -192,21 +192,33 @@ def run_scripted(
     resolver = media_resolver if media_resolver is not None else gdrive.resolve_media
     video_path = resolver(video_path, progress=progress)
     # --- 템플릿(실제 프로젝트) 확보 ---
+    # 프로토타입을 수확할 수 있는(=실제 CapCut이 만든) 프로젝트만 템플릿으로 쓴다.
+    # 검증 없이 최소 골격으로 진행하면 CapCut이 "사용할 수 없음"으로 거부하는
+    # 프로젝트가 등록되므로, 쓸 만한 템플릿이 없으면 등록 전에 실패한다.
     template = None
     scaffold = None
-    if template_dir is None:
-        candidates = installer.find_template_projects(projects_root)
-        candidates = [c for c in candidates
-                      if os.path.basename(c) != project_name]
-        if candidates:
-            template_dir = candidates[0]
-    if template_dir:
-        _log(progress, f"템플릿 프로젝트: {os.path.basename(template_dir)}")
-        template = installer.load_template(template_dir)
-        scaffold = template_dir
-    else:
-        _log(progress, "⚠ 템플릿 프로젝트를 찾지 못했습니다 — 최소 골격으로 생성합니다. "
-                       "CapCut에서 열리지 않으면 실제 프로젝트를 템플릿으로 지정하세요.")
+    candidates = ([template_dir] if template_dir
+                  else installer.find_template_projects(projects_root))
+    for cand in candidates:
+        if not cand or os.path.basename(cand) == project_name:
+            continue
+        try:
+            t = installer.load_template(cand)
+        except (OSError, ValueError):
+            continue
+        if capcut_draft.harvest_prototypes(t):
+            template, scaffold = t, cand
+            _log(progress, f"템플릿 프로젝트: {os.path.basename(cand)}")
+            break
+        _log(progress, f"템플릿 후보 건너뜀(프로토타입 없음): "
+                       f"{os.path.basename(cand)}")
+    if template is None:
+        if install:
+            raise ValueError(
+                "사용할 수 있는 템플릿 프로젝트가 없습니다. CapCut에서 "
+                "(영상 1개 + 자막 몇 줄) 프로젝트를 하나 만들어 저장한 뒤 다시 "
+                "실행하세요. 템플릿 없이 만든 프로젝트는 CapCut이 열지 못합니다.")
+        _log(progress, "⚠ 템플릿 없음 — 최소 골격으로 생성합니다 (등록 안 함).")
 
     # --- STT (단어 타임스탬프) ---
     _log(progress, f"음성인식(STT) 중: {os.path.basename(video_path)} … "

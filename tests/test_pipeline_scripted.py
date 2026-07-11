@@ -74,6 +74,7 @@ def run(env_root, **kw):
         probe_duration_fn=lambda p: 100.0,
         probe_resolution_fn=lambda p: (1080, 1920),
         running_check=lambda: False,
+        media_resolver=lambda p, progress=None: p,
         **kw)
     return out, logs
 
@@ -153,7 +154,8 @@ class TestAutocutFallback:
             transcribe_words_fn=fake_transcribe_improvised,
             probe_duration_fn=lambda p: 100.0,
             probe_resolution_fn=lambda p: (1080, 1920),
-            running_check=lambda: False)
+            running_check=lambda: False,
+            media_resolver=lambda p, progress=None: p)
         assert any("자동컷으로 전환" in m for m in logs)
         draft = json.load(open(os.path.join(out, "draft_content.json"),
                                encoding="utf-8"))

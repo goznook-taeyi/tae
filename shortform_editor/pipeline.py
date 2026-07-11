@@ -160,7 +160,7 @@ def run(
 
 def run_scripted(
     video_path: str,
-    script_row: ScriptRow,
+    script_row: Optional[ScriptRow] = None,
     *,
     project_name: str = "shortform_auto",
     projects_root: str,
@@ -174,17 +174,23 @@ def run_scripted(
     probe_duration_fn: Callable[[str], float] = ffmpeg_utils.probe_duration,
     probe_resolution_fn: Callable[[str], tuple] = ffmpeg_utils.probe_resolution,
     running_check: Callable[[], bool] = installer.capcut_running,
+    media_resolver: Optional[Callable[..., str]] = None,
 ) -> str:
-    """대본 정렬 모드: 키티조정기 기획안(타임코드 없음) + 촬영본 1개 → CapCut 프로젝트.
+    """자동 가편집: 촬영본 1개 (+선택: 키티조정기 기획안 행) → CapCut 프로젝트.
 
-    1. STT(단어 타임스탬프)로 촬영본을 전사한다.
-    2. 기획안 대본(후킹멘트·main 비트·CTA)과 전사를 정렬해 컷 구간을 찾는다
-       (NG 테이크는 마지막 테이크 선택).
-    3. 후킹→main→CTA 순으로 컷을 배치하고 자막을 재매핑한다.
+    1. 영상 입력을 로컬로 확보한다(드라이브 링크 다운로드·SD카드 로컬 복사).
+    2. STT(단어 타임스탬프)로 촬영본을 전사한다.
+    3. 기획안이 있으면 대본과 전사를 정렬해 컷 구간을 찾는다(NG는 마지막 테이크).
+       대본대로 안 말했거나(일치율 낮음) 기획안이 없으면 전사 기반 자동컷
+       (무음·반복 테이크 제거)으로 편집한다.
+    4. 후킹→main→CTA 순으로 컷을 배치하고 자막을 재매핑한다.
        후킹 구간에는 대사 자막 대신 상단질문 타이틀만 얹는다 (편집 문법).
-    4. 실제 프로젝트(template_dir)를 프로토타입 삼아 draft를 생성하고,
+    5. 실제 프로젝트(template_dir)를 프로토타입 삼아 draft를 생성하고,
        install=True면 root_meta_info.json 등록까지 수행한다(캡컷 종료 필수).
     """
+    from . import gdrive
+    resolver = media_resolver if media_resolver is not None else gdrive.resolve_media
+    video_path = resolver(video_path, progress=progress)
     # --- 템플릿(실제 프로젝트) 확보 ---
     template = None
     scaffold = None
@@ -208,14 +214,19 @@ def run_scripted(
     cues, words = transcribe_words_fn(video_path, "v1", language=language)
     _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
 
-    # --- 1차: 대본-전사 정렬 (대본대로 말한 경우) ---
-    units = kitty_solting.script_units(script_row)
-    _log(progress, f"대본 {len(units)}개 비트를 전사와 정렬 중…")
-    result = align_mod.align_script(words, units)
-    matched_ratio = len(result.clips) / max(len(units), 1)
+    # --- 1차: 대본-전사 정렬 (기획안이 있고 대본대로 말한 경우) ---
+    if script_row is not None:
+        units = kitty_solting.script_units(script_row)
+        _log(progress, f"대본 {len(units)}개 비트를 전사와 정렬 중…")
+        result = align_mod.align_script(words, units)
+        matched_ratio = len(result.clips) / max(len(units), 1)
+    else:
+        units, result = [], align_mod.AlignResult()
+        matched_ratio = 0.0
+        _log(progress, "기획안 없음 — 전사 기반 자동컷으로 편집합니다.")
 
     grouped: dict[str, list[PlanClip]] = {}
-    if matched_ratio >= 0.5:
+    if units and matched_ratio >= 0.5:
         for w in result.warnings:
             _log(progress, f"⚠ {w}")
         _log(progress, f"정렬 성공 {len(result.clips)}/{len(units)} 비트 "
@@ -225,10 +236,11 @@ def run_scripted(
             grouped.setdefault(clip.unit.role, []).append(
                 PlanClip(source_id="v1", start=clip.start, end=clip.end))
     else:
-        # --- 2차(폴백): 전사 기반 자동컷 (기획안은 주제만 잡고 즉흥 발화한 경우) ---
-        _log(progress,
-             f"대본과 발화 일치율이 낮습니다({len(result.clips)}/{len(units)} 비트) — "
-             "전사 기반 자동컷으로 전환합니다 (무음·반복 테이크 제거).")
+        # --- 2차(폴백): 전사 기반 자동컷 (기획안 없음 또는 즉흥 발화) ---
+        if units:
+            _log(progress,
+                 f"대본과 발화 일치율이 낮습니다({len(result.clips)}/{len(units)} 비트) — "
+                 "전사 기반 자동컷으로 전환합니다 (무음·반복 테이크 제거).")
         blocks = autocut_mod.blocks_from_words(words)
         n_raw = len(blocks)
         blocks = autocut_mod.dedupe_takes(blocks)
@@ -241,8 +253,9 @@ def run_scripted(
         autocut_mod.pad_blocks(blocks)
         roles = autocut_mod.plan_blocks(
             blocks,
-            hook_hint=script_row.hook or script_row.top_question,
-            cta_hint=script_row.cta)
+            hook_hint=(script_row.hook or script_row.top_question)
+            if script_row else "",
+            cta_hint=script_row.cta if script_row else "")
         for role, blks in roles.items():
             grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end)
                              for b in blks]

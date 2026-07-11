@@ -204,3 +204,79 @@ def download_file(
 def default_download_dir() -> str:
     """드라이브 영상 다운로드 기본 폴더."""
     return os.path.join(os.path.expanduser("~"), "Videos", "숏폼자동편집")
+
+
+# ---------------------------------------------------------------------------
+# 이동식 매체(SD카드 등) 로컬 스테이징
+# ---------------------------------------------------------------------------
+# 실측 사고: DJI SD카드(E:)에서 영상을 바로 고르면 처리 도중 장치가 절전/분리되어
+# "[Errno 2] No such file" / ffprobe exit 1 로 죽는다. 이동식·네트워크 드라이브의
+# 파일은 처리 전에 로컬 폴더로 복사한다.
+
+_NONFIXED_DRIVE_TYPES = {2, 4, 5}  # REMOVABLE, REMOTE, CDROM
+
+
+def is_removable_path(path: str) -> bool:
+    """경로가 이동식/네트워크/광학 드라이브에 있는지 (Windows 전용, 그 외 False)."""
+    if os.name != "nt":
+        return False
+    drive = os.path.splitdrive(os.path.abspath(path))[0]
+    if not drive:
+        return False
+    try:
+        import ctypes
+        dtype = ctypes.windll.kernel32.GetDriveTypeW(drive + "\\")
+    except Exception:
+        return False
+    return dtype in _NONFIXED_DRIVE_TYPES
+
+
+def localize_file(path: str, dest_dir: Optional[str] = None,
+                  progress: Optional[Callable[[str], None]] = None,
+                  force: bool = False) -> str:
+    """이동식 매체의 파일을 로컬로 복사하고 그 경로를 반환한다.
+
+    고정 디스크의 파일은 그대로 돌려준다(force=True면 무조건 복사).
+    같은 이름·같은 크기의 사본이 이미 있으면 재복사하지 않는다.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"입력 영상을 찾을 수 없습니다: {path}\n"
+            "SD카드/외장 드라이브가 분리되지 않았는지 확인하세요.")
+    if not force and not is_removable_path(path):
+        return path
+    dest_dir = dest_dir or default_download_dir()
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, os.path.basename(path))
+    src_size = os.path.getsize(path)
+    if os.path.isfile(dest) and os.path.getsize(dest) == src_size:
+        if progress:
+            progress(f"로컬 사본 재사용: {dest}")
+        return dest
+    if progress:
+        progress(f"이동식 드라이브 감지 — 로컬로 복사 중… "
+                 f"({src_size / (1 << 20):.0f}MB)")
+    import shutil
+    tmp = dest + ".part"
+    shutil.copy2(path, tmp)
+    os.replace(tmp, dest)
+    if progress:
+        progress(f"복사 완료: {dest}")
+    return dest
+
+
+def resolve_media(path_or_url: str, dest_dir: Optional[str] = None,
+                  progress: Optional[Callable[[str], None]] = None) -> str:
+    """영상 입력(로컬 경로/드라이브 링크)을 처리 가능한 로컬 경로로 바꾼다.
+
+    - 드라이브 링크 → 다운로드
+    - 이동식 매체(SD카드 등)의 파일 → 로컬 복사
+    - 고정 디스크의 파일 → 그대로
+    - 존재하지 않는 경로 → FileNotFoundError(장치 분리 안내)
+    """
+    if is_google_url(path_or_url):
+        if progress:
+            progress("드라이브에서 영상 다운로드 중…")
+        return download_file(path_or_url, dest_dir or default_download_dir(),
+                             progress=progress)
+    return localize_file(path_or_url, dest_dir=dest_dir, progress=progress)

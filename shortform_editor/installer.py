@@ -52,10 +52,10 @@ def capcut_running() -> bool:
     try:
         out = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"],
-            capture_output=True, text=True, timeout=15).stdout
+            capture_output=True, timeout=15).stdout
     except (OSError, subprocess.SubprocessError):
         return False
-    return "CapCut.exe" in (out or "")
+    return b"CapCut.exe" in (out or b"")
 
 
 def _now_us() -> int:

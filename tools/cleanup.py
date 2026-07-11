@@ -27,8 +27,8 @@ BACKUPS = r"C:\ai-projects\capcut\backups"
 
 def capcut_running() -> bool:
     out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"],
-                         capture_output=True, text=True).stdout
-    return "CapCut.exe" in (out or "")
+                         capture_output=True).stdout
+    return b"CapCut.exe" in (out or b"")
 
 
 def guard():

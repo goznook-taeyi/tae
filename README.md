@@ -1,112 +1,106 @@
 # 숏폼 오토에디터 → CapCut
 
-세로(9:16) 숏폼/릴스 영상을 **후킹 → 유지 → Main → CTA** 마케팅 구조로 컷편집하고,
-**자막을 자동 생성**해서 **CapCut(Windows) draft(초안) 프로젝트**로 만들어 주는 데스크탑
-도구입니다. CapCut을 열면 컷과 자막이 이미 얹혀 있어, 최종 감성만 다듬으면 됩니다.
+**키티조정기 기획안(대본) + 촬영본**을 받아, 대본과 음성 전사를 자동 정렬해
+**후킹 → Main → CTA** 구조로 컷편집하고 자막까지 얹은 **CapCut(Windows) draft
+프로젝트**를 만들어 주는 데스크탑 도구입니다. CapCut을 열면 프로젝트 목록에
+바로 보이고, 컷·자막·상단질문 타이틀이 얹혀 있어 최종 감성만 다듬으면 됩니다.
 
-- 리프레임/화면조정 없음 — **입력 영상 비율 그대로** 유지
-- 자막은 **도구가 알아서** 생성(수작업 불필요)
-- 입력: **긴 영상 1개** 또는 **여러 클립** 모두 지원
-- 조작: 간단한 데스크탑 창(GUI)
+- **타임코드 불필요** — 기획안은 대본 그대로. STT 전사와 대본을 유사도 정렬해
+  각 비트가 실제로 발화된 구간을 찾아 컷 (NG 테이크는 **마지막 테이크** 채택)
+- 자막 자동 생성(수작업 제거), 후킹 구간엔 대사 자막 대신 **상단질문 타이틀**
+- 리프레임/화면조정 없음 — **입력 영상 비율 그대로**
+- 실제 CapCut 프로젝트를 **템플릿(프로토타입)으로 복제**해 스키마·자막 스타일을
+  사용자 CapCut 버전과 100% 일치시킴
+- `root_meta_info.json` **자동 등록**(백업·미러 파일 동기화 포함) — CapCut을 열면
+  목록에 바로 표시
 
-## 설치
+## 실행 (이 PC)
 
-1. Python 3.10+ 설치 (Windows)
-2. **FFmpeg** 설치 후 PATH 등록 (`ffmpeg`, `ffprobe` 명령이 되어야 함)
-3. 의존성 설치:
-   ```
-   pip install -r requirements.txt
-   ```
-   `faster-whisper`는 최초 실행 시 음성인식 모델을 내려받아 캐시합니다(오프라인 환경은
-   미리 캐시 필요).
-
-## 실행
+바탕화면 **"숏폼 자동편집기"** 아이콘 또는:
 
 ```
-python main.py
+cd C:\ai-projects\tae
+python main.py        (또는 run_editor.bat)
 ```
 
-창에서 ① 영상 추가 → ② (선택)기획안 → ③ 프로젝트 이름/자막 언어/CapCut draft 폴더 확인
-→ **[편집 실행 ▶]**. 완료되면 CapCut을 열면 프로젝트가 보입니다.
+### 사용 순서
 
-CapCut draft 폴더 기본값(자동 감지):
-`%LOCALAPPDATA%\CapCut\User Data\Projects\com.lveditor.draft`
+1. **캡컷을 완전히 종료**한다 (등록 안전 규칙).
+2. ① 촬영본 영상 1개 추가 → ② 기획안 열기(키티조정기 `_batch_*.json` / `_plan.json`
+   / CSV 백업) → 편집할 **행(숏폼)** 선택 → ③ 프로젝트 이름 확인.
+3. 템플릿 프로젝트는 기본 "(자동 — 최근 프로젝트)". 자막 스타일을 물려받고 싶은
+   실제 프로젝트를 직접 골라도 된다.
+4. **[편집 실행 ▶]** → STT(최초엔 모델 다운로드) → 대본 정렬 → draft 생성·등록.
+5. CapCut을 열면 프로젝트가 목록에 보인다.
+
+기획안 없이 영상만 넣으면 폴백 기획(비율 기반 후킹/유지/Main/CTA)으로 동작한다.
+
+## 설치 (새 PC)
+
+1. Python 3.10+ / FFmpeg(PATH 등록: `ffmpeg`, `ffprobe`)
+2. `pip install -r requirements.txt` — `faster-whisper`는 최초 실행 시 모델을
+   내려받아 캐시한다.
 
 ## 동작 구조
 
 ```
-입력 영상 + (선택)기획안
+키티조정기 기획안(대본 시트: 상단질문·후킹멘트·main·CTA) + 촬영본
         │
+        ├─ STT(faster-whisper, 단어 타임스탬프)
         ▼
-  EditPlan (편집 계약)  ←── 기획안 없으면 폴백 기획기가 후킹/유지/Main/CTA 자동 생성
-        │
-        ├─ 자막(STT, faster-whisper) → 컷 후 타임라인으로 재매핑
-        ├─ 섹션 → 컷 세그먼트 배치
+  대본-전사 정렬 (align.py)  ── 비트별 발화 구간 탐지, NG면 마지막 테이크
         ▼
-  CapCut draft_content.json (+ meta) 생성 → draft 폴더에 프로젝트 기록
+  EditPlan → 컷 세그먼트 배치 → 자막 재매핑(후킹 구간 제외) + 상단질문 타이틀
+        ▼
+  실제 프로젝트 프로토타입 복제로 draft_content.json 생성 (capcut_draft.py)
+        ▼
+  프로젝트 기록 + 미러(.bak/template-2.tmp) + root_meta_info.json 등록 (installer.py)
 ```
 
-## 기획안(EditPlan) 형식
+## 기획안 형식 (실측 확정)
 
-기획자(키티조정기·숏폼솔팅기) 산출물은 어댑터를 거쳐 아래 계약으로 정규화됩니다.
-직접 JSON으로 넘길 수도 있습니다. 시간 단위는 **초**.
+키티조정기 산출물(구글시트 = `output/_batch_*.json` = `_plan.json`)을 그대로 받는다:
 
 ```json
-{
-  "source": [{ "id": "v1", "path": "C:/videos/raw.mp4" }],
-  "sections": [
-    { "role": "hook",      "clips": [{ "source_id": "v1", "start": 12, "end": 15 }] },
-    { "role": "retention", "clips": [{ "source_id": "v1", "start": 30, "end": 38 }] },
-    { "role": "main",      "clips": [{ "source_id": "v1", "start": 60, "end": 85 }] },
-    { "role": "cta",       "clips": [{ "source_id": "v1", "start": 100, "end": 105 }] }
-  ],
-  "captions": "auto"
-}
+{"title": "병원_YYYY-MM-DD_회차", "folderId": "…",
+ "headers": ["no","촬영장소","상단질문","후킹멘트(도입부)",
+              "main 내용(구체화된 원장님 답변)","CTA"],
+ "rows": [["1","원장실","<상단질문>","<후킹멘트>","<main 대본>","<CTA>"], "…"]}
 ```
 
-어댑터는 **평평한 컷 리스트** 형태(한글 역할명·`in`/`out` 키 포함)도 관대하게 받습니다:
+행 하나 = 숏폼 하나. main의 비트는 ` / ` 구분, `PD:`/`원장:` 라벨과 `(웃음)` 지문은
+자동 제거된다. **타임코드는 필요 없다** (대본-전사 정렬이 구간을 찾는다).
 
-```json
-{
-  "sources": [{ "id": "v1", "path": "C:/videos/raw.mp4" }],
-  "plan": [
-    { "section": "후킹", "source": "v1", "in": 12,  "out": 15 },
-    { "section": "유지", "source": "v1", "in": 30,  "out": 38 },
-    { "section": "main", "source": "v1", "start": 60, "end": 85 },
-    { "section": "CTA",  "source": "v1", "in": 100, "out": 105 }
-  ]
-}
-```
+타임코드가 있는 수동 컷 리스트(EditPlan JSON)도 계속 지원한다 — README 하단
+`editplan.py` 계약 참고.
 
-> **연동 메모**: 키티조정기/숏폼솔팅기 저장소를 이 세션에서 볼 수 없어, 어댑터
-> (`shortform_editor/adapters/kitty_solting.py`)는 **잠정** 구현입니다. 실제 산출물
-> 샘플을 주시면 매핑만 맞추면 됩니다.
+## CapCut 호환성·안전 규칙 (이 PC 실측)
 
-## CapCut 호환성 (중요)
-
-CapCut의 `draft_content.json` 스키마는 **버전마다 다릅니다**. 이 도구는 표준 포맷을
-따르지만, 완전한 호환을 위해서는 **사용자 CapCut에서 만든 실제 프로젝트의
-`draft_content.json`을 템플릿으로 넘기는 것**을 권장합니다. 그러면 그 구조를 base로
-유지한 채 트랙/자재/길이만 채웁니다. (파이프라인 `template` 인자, 로드맵에서 GUI 연결 예정)
+- CapCut 8.9.1 / draft v175 기준. 실제 프로젝트를 템플릿으로 복제하므로 세그먼트
+  50필드·텍스트 material 125필드의 실측 스키마가 그대로 유지된다.
+- **새 드래프트 등록은 캡컷 완전 종료 상태에서만** — 실행 중이면 종료 시
+  `root_meta_info.json`이 메모리 상태로 덮어써져 유실된다. GUI가 실행 여부를
+  검사하고 막는다. 등록 전 백업이 `_backups/`에 남는다.
+- `draft_content.json` 수정 시 미러(`draft_content.json.bak`, `template-2.tmp`)를
+  같은 내용으로 동기화한다(installer가 자동 처리).
+- 타임스탬프는 캡컷 규격인 **마이크로초**.
 
 ## 테스트
 
 ```
-python -m pytest
+python -m pytest        # 82 passed — STT/FFmpeg/CapCut 없이 순수 로직 검증
 ```
-
-FFmpeg/CapCut/whisper 없이 순수 로직(기획·타임라인·자막·draft 생성·어댑터·파이프라인)을
-검증합니다. GUI 스모크 테스트는 tkinter가 있으면 실행됩니다.
 
 ## 프로젝트 구조
 
 | 파일 | 역할 |
 |---|---|
+| `shortform_editor/align.py` | **대본-전사 정렬** (비트별 발화 구간 탐지, 최종 테이크 선택) |
+| `shortform_editor/adapters/kitty_solting.py` | 키티조정기 시트(JSON/CSV) 파서 + 레거시 컷 리스트 |
+| `shortform_editor/captions.py` | STT(faster-whisper, 단어 타임스탬프) 래퍼, 자막 cue 분할 |
 | `shortform_editor/editplan.py` | 편집 계약(EditPlan) 모델·검증·폴백 기획기 |
 | `shortform_editor/timeline.py` | 섹션→세그먼트 배치, 자막 시간 재매핑 |
-| `shortform_editor/captions.py` | STT(faster-whisper) 래퍼, 자막 cue 분할 |
-| `shortform_editor/capcut_draft.py` | CapCut draft 생성기(템플릿 기반) |
-| `shortform_editor/adapters/kitty_solting.py` | 기획자 산출물 → EditPlan 어댑터(잠정) |
-| `shortform_editor/ffmpeg_utils.py` | ffprobe 래퍼 |
-| `shortform_editor/pipeline.py` | 전체 오케스트레이션 |
+| `shortform_editor/capcut_draft.py` | draft 생성기 — **실제 프로젝트 프로토타입 복제** |
+| `shortform_editor/installer.py` | 프로젝트 기록·미러 동기화·root_meta 등록(백업 포함) |
+| `shortform_editor/pipeline.py` | 오케스트레이션 (`run_scripted` = 대본 모드) |
 | `shortform_editor/gui.py` | Tkinter 데스크탑 창 |

@@ -146,6 +146,193 @@ def _text_segment(seg_id: str, material_id: str, cap: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# 프로토타입 복제 (실측 스키마 호환 — 권장 경로)
+# ---------------------------------------------------------------------------
+# 실제 CapCut(예: 8.9.1/draft v175)의 세그먼트·material은 필드가 각각 50~100개로,
+# 최소 골격 생성으로는 열리지 않을 수 있다. 실제 프로젝트(draft_content.json)를
+# template으로 받으면 그 안의 진짜 세그먼트/material을 '프로토타입'으로 복제해
+# id·시간·경로·텍스트만 바꾼다 → 스키마가 사용자 CapCut 버전과 100% 일치한다.
+# 자막의 폰트·스타일·위치도 실제 프로젝트의 것을 그대로 물려받는다.
+
+
+def _find_material_with_key(materials: dict, mid: str):
+    """material id로 (소속 리스트 키, material dict)를 찾는다."""
+    for key, lst in materials.items():
+        if not isinstance(lst, list):
+            continue
+        for m in lst:
+            if isinstance(m, dict) and m.get("id") == mid:
+                return key, m
+    return None, None
+
+
+def _proto_entry(template: dict, seg: dict):
+    mats = template.get("materials", {})
+    _key, mat = _find_material_with_key(mats, seg.get("material_id", ""))
+    if mat is None:
+        return None
+    extras = []
+    for rid in seg.get("extra_material_refs", []):
+        key, m = _find_material_with_key(mats, rid)
+        if key and m:
+            extras.append((key, m))
+    return {"segment": seg, "material": mat, "extras": extras}
+
+
+def harvest_prototypes(template: Optional[dict]) -> Optional[dict]:
+    """template(실제 draft dict)에서 비디오/자막/타이틀 프로토타입을 수확한다.
+
+    반환: {"video": entry, "subtitle": entry, "title": entry(옵션)} 또는 None.
+    subtitle = material type이 'subtitle'(자동캡션)인 텍스트,
+    title = 그 외 텍스트(인용 타이틀 등). 없으면 subtitle로 대신한다.
+    """
+    if not template or not template.get("tracks"):
+        return None
+    protos: dict[str, dict] = {}
+    for tr in template["tracks"]:
+        segs = tr.get("segments") or []
+        if not segs:
+            continue
+        if tr.get("type") == "video" and "video" not in protos:
+            entry = _proto_entry(template, segs[0])
+            if entry:
+                protos["video"] = entry
+        elif tr.get("type") == "text":
+            for seg in segs:
+                entry = _proto_entry(template, seg)
+                if not entry:
+                    continue
+                kind = ("subtitle" if entry["material"].get("type") == "subtitle"
+                        else "title")
+                protos.setdefault(kind, entry)
+    if "video" not in protos or ("subtitle" not in protos and "title" not in protos):
+        return None
+    protos.setdefault("subtitle", protos.get("title"))
+    protos.setdefault("title", protos.get("subtitle"))
+    return protos
+
+
+def _clone_extras(entry: dict, materials: dict,
+                  gen: Callable[[], str]) -> list[str]:
+    """프로토타입의 부속 material들을 복제해 새 id 목록을 돌려준다."""
+    refs: list[str] = []
+    for key, proto_mat in entry["extras"]:
+        clone = copy.deepcopy(proto_mat)
+        clone["id"] = gen()
+        materials.setdefault(key, [])
+        materials[key].append(clone)
+        refs.append(clone["id"])
+    return refs
+
+
+def _reset_segment_dynamics(seg: dict) -> None:
+    """복제 세그먼트에서 인스턴스 고유 상태(키프레임·그룹)를 비운다."""
+    if "group_id" in seg:
+        seg["group_id"] = ""
+    if "keyframe_refs" in seg:
+        seg["keyframe_refs"] = []
+    if "common_keyframes" in seg:
+        seg["common_keyframes"] = []
+    if "raw_segment_id" in seg:
+        seg["raw_segment_id"] = ""
+
+
+def _clone_video_from_proto(entry: dict, materials: dict, seg: Segment,
+                            path: str, duration_us: int,
+                            width: int, height: int,
+                            mat_cache: dict[str, dict],
+                            gen: Callable[[], str]) -> dict:
+    """실제 비디오 세그먼트를 복제해 새 컷으로 만든다."""
+    # 같은 원본 경로의 material은 재사용
+    if path in mat_cache:
+        mat = mat_cache[path]
+    else:
+        mat = copy.deepcopy(entry["material"])
+        mat["id"] = gen()
+        mat["path"] = path
+        mat["material_name"] = os.path.basename(path) if path else ""
+        mat["duration"] = duration_us
+        mat["width"] = width
+        mat["height"] = height
+        for k in ("local_material_id", "origin_material_id", "material_url"):
+            if k in mat:
+                mat[k] = ""
+        if isinstance(mat.get("crop"), dict):  # 크롭 초기화(입력 비율 그대로)
+            mat["crop"] = {
+                "lower_left_x": 0.0, "lower_left_y": 1.0,
+                "lower_right_x": 1.0, "lower_right_y": 1.0,
+                "upper_left_x": 0.0, "upper_left_y": 0.0,
+                "upper_right_x": 1.0, "upper_right_y": 0.0,
+            }
+        materials.setdefault("videos", []).append(mat)
+        mat_cache[path] = mat
+
+    sd = copy.deepcopy(entry["segment"])
+    sd["id"] = gen()
+    sd["material_id"] = mat["id"]
+    dur = _us(seg.duration)
+    sd["source_timerange"] = {"start": _us(seg.src_start), "duration": dur}
+    sd["target_timerange"] = {"start": _us(seg.target_start), "duration": dur}
+    sd["speed"] = 1.0
+    sd["visible"] = True
+    sd["extra_material_refs"] = _clone_extras(entry, materials, gen)
+    if isinstance(sd.get("clip"), dict):  # 화면조정(리프레임) 없음 — 원본 그대로
+        sd["clip"] = {
+            "alpha": 1.0,
+            "flip": {"horizontal": False, "vertical": False},
+            "rotation": 0.0,
+            "scale": {"x": 1.0, "y": 1.0},
+            "transform": {"x": 0.0, "y": 0.0},
+        }
+    _reset_segment_dynamics(sd)
+    return sd
+
+
+def _patch_text_content(content: str, text: str) -> str:
+    """실제 rich-text content JSON의 텍스트만 바꾼다(스타일 유지)."""
+    try:
+        data = json.loads(content)
+        data["text"] = text
+        for style in data.get("styles", []):
+            if isinstance(style, dict) and "range" in style:
+                style["range"] = [0, len(text)]
+        return json.dumps(data, ensure_ascii=False)
+    except (ValueError, TypeError):
+        return json.dumps({"text": text,
+                           "styles": [{"range": [0, len(text)]}]},
+                          ensure_ascii=False)
+
+
+def _clone_text_from_proto(entry: dict, materials: dict, cap: dict,
+                           gen: Callable[[], str]) -> dict:
+    """실제 텍스트(자막/타이틀) 세그먼트를 복제해 새 자막으로 만든다."""
+    mat = copy.deepcopy(entry["material"])
+    mat["id"] = gen()
+    text = cap["text"]
+    mat["content"] = _patch_text_content(mat.get("content", ""), text)
+    for k in ("recognize_text", "base_content"):
+        if k in mat:
+            mat[k] = ""
+    for k in ("words", "current_words"):
+        if isinstance(mat.get(k), dict):
+            mat[k] = {"start_time": [], "end_time": [], "text": []}
+    materials.setdefault("texts", []).append(mat)
+
+    sd = copy.deepcopy(entry["segment"])
+    sd["id"] = gen()
+    sd["material_id"] = mat["id"]
+    start = _us(cap["start"])
+    dur = _us(cap["end"] - cap["start"])
+    sd["target_timerange"] = {"start": start, "duration": dur}
+    if "source_timerange" in sd and isinstance(sd["source_timerange"], dict):
+        sd["source_timerange"] = {"start": 0, "duration": dur}
+    sd["visible"] = True
+    sd["extra_material_refs"] = _clone_extras(entry, materials, gen)
+    _reset_segment_dynamics(sd)
+    return sd
+
+
+# ---------------------------------------------------------------------------
 # base(빈 draft) 골격
 # ---------------------------------------------------------------------------
 
@@ -180,10 +367,24 @@ def _default_base(canvas_w: int, canvas_h: int) -> dict:
 
 def _empty_materials_lists(materials: dict) -> None:
     """template 재사용 시 편집 대상 material 리스트를 비운다."""
-    for key in ("videos", "texts", "speeds", "canvases",
-                "sound_channel_mappings", "vocal_separations"):
+    for key in ("videos", "texts", "audios", "speeds", "canvases",
+                "sound_channel_mappings", "vocal_separations",
+                "material_animations", "material_colors", "placeholder_infos",
+                "effects", "stickers", "transitions"):
         materials.setdefault(key, [])
         materials[key] = []
+
+
+def _reset_template_state(base: dict) -> None:
+    """template 재사용 시 이전 편집의 잔여 상태(키프레임 등)를 비운다."""
+    if isinstance(base.get("keyframes"), dict):
+        for k, v in base["keyframes"].items():
+            if isinstance(v, list):
+                base["keyframes"][k] = []
+    if isinstance(base.get("keyframe_graph_list"), list):
+        base["keyframe_graph_list"] = []
+    if isinstance(base.get("time_marks"), (list, dict)):
+        base["time_marks"] = [] if isinstance(base["time_marks"], list) else {}
 
 
 # ---------------------------------------------------------------------------
@@ -198,21 +399,28 @@ def build_draft(
     source_durations: Optional[dict[str, float]] = None,
     template: Optional[dict] = None,
     id_gen: Optional[Callable[[], str]] = None,
+    titles: Optional[list[dict]] = None,
 ) -> dict:
     """세그먼트/자막 → CapCut draft dict.
 
     canvas: (width, height). 입력 비율 유지가 원칙이므로 원본 해상도를 넘기면 된다.
     source_durations: source_id -> 전체 길이(초). 없으면 사용 구간의 최대값으로 추정.
-    template: 실제 CapCut draft dict. 있으면 base로 삼아 호환성을 높인다.
+    template: 실제 CapCut draft dict. 있으면 그 안의 실제 세그먼트/material을
+        프로토타입으로 복제해 스키마를 사용자 CapCut 버전과 일치시킨다(권장).
+    titles: 대사 자막과 별도의 타이틀 오버레이(상단질문 등) [{"start","end","text"}].
     """
     gen = id_gen or _uuid
     canvas_w, canvas_h = canvas
+    protos = harvest_prototypes(template)
     base = copy.deepcopy(template) if template else _default_base(canvas_w, canvas_h)
     base.setdefault("materials", {})
     materials = base["materials"]
     _empty_materials_lists(materials)
+    if template:
+        _reset_template_state(base)
+        base["id"] = gen() if id_gen else _uuid()
 
-    # 소스별 비디오 material(중복 경로는 하나로).
+    # 소스별 전체 길이(초) 추정.
     est_dur: dict[str, float] = {}
     for seg in segments:
         est_dur[seg.source_id] = max(est_dur.get(seg.source_id, 0.0), seg.src_end)
@@ -220,39 +428,63 @@ def build_draft(
         for sid, d in source_durations.items():
             est_dur[sid] = max(est_dur.get(sid, 0.0), d)
 
-    video_mat_id: dict[str, str] = {}
-    for seg in segments:
-        if seg.source_id in video_mat_id:
-            continue
-        mid = gen()
-        video_mat_id[seg.source_id] = mid
-        materials["videos"].append(_video_material(
-            mid, seg.source_path, _us(est_dur.get(seg.source_id, seg.src_end)),
-            canvas_w, canvas_h))
-
-    # 비디오 트랙 세그먼트 + 부속 자재.
     video_track_segments = []
-    for seg in segments:
-        speed_id = gen()
-        canvas_id = gen()
-        scm_id = gen()
-        vocal_id = gen()
-        materials["speeds"].append(_support_material(speed_id, "speed"))
-        materials["canvases"].append(_support_material(canvas_id, "canvas"))
-        materials["sound_channel_mappings"].append(
-            _support_material(scm_id, "sound_channel_mapping"))
-        materials["vocal_separations"].append(
-            _support_material(vocal_id, "vocal_separation"))
-        video_track_segments.append(_video_segment(
-            gen(), video_mat_id[seg.source_id], seg,
-            [speed_id, canvas_id, scm_id, vocal_id]))
-
-    # 텍스트(자막) 트랙 세그먼트.
     text_track_segments = []
-    for cap in captions:
-        mid = gen()
-        materials["texts"].append(_text_material(mid, cap["text"]))
-        text_track_segments.append(_text_segment(gen(), mid, cap))
+    title_track_segments = []
+
+    if protos:
+        # --- 프로토타입 복제 경로 (실측 스키마 호환) ---
+        mat_cache: dict[str, dict] = {}
+        for seg in segments:
+            dur_us = _us(est_dur.get(seg.source_id, seg.src_end))
+            video_track_segments.append(_clone_video_from_proto(
+                protos["video"], materials, seg, seg.source_path,
+                dur_us, canvas_w, canvas_h, mat_cache, gen))
+        for cap in captions:
+            text_track_segments.append(_clone_text_from_proto(
+                protos["subtitle"], materials, cap, gen))
+        for cap in (titles or []):
+            title_track_segments.append(_clone_text_from_proto(
+                protos["title"], materials, cap, gen))
+    else:
+        # --- 최소 골격 경로 (template 없음 — 테스트/폴백) ---
+        video_mat_id: dict[str, str] = {}
+        for seg in segments:
+            if seg.source_id in video_mat_id:
+                continue
+            mid = gen()
+            video_mat_id[seg.source_id] = mid
+            materials["videos"].append(_video_material(
+                mid, seg.source_path, _us(est_dur.get(seg.source_id, seg.src_end)),
+                canvas_w, canvas_h))
+
+        for seg in segments:
+            speed_id = gen()
+            canvas_id = gen()
+            scm_id = gen()
+            vocal_id = gen()
+            materials["speeds"].append(_support_material(speed_id, "speed"))
+            materials["canvases"].append(_support_material(canvas_id, "canvas"))
+            materials["sound_channel_mappings"].append(
+                _support_material(scm_id, "sound_channel_mapping"))
+            materials["vocal_separations"].append(
+                _support_material(vocal_id, "vocal_separation"))
+            video_track_segments.append(_video_segment(
+                gen(), video_mat_id[seg.source_id], seg,
+                [speed_id, canvas_id, scm_id, vocal_id]))
+
+        for cap in captions:
+            mid = gen()
+            materials["texts"].append(_text_material(mid, cap["text"]))
+            text_track_segments.append(_text_segment(gen(), mid, cap))
+
+        for cap in (titles or []):
+            mid = gen()
+            materials["texts"].append(_text_material(mid, cap["text"]))
+            tseg = _text_segment(gen(), mid, cap)
+            # 타이틀은 상단에 배치
+            tseg["clip"]["transform"]["y"] = 0.6
+            title_track_segments.append(tseg)
 
     total_us = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"]
                     for s in video_track_segments), default=0)
@@ -261,11 +493,12 @@ def build_draft(
         "id": gen(), "type": "video", "attribute": 0, "flag": 0,
         "is_default_name": True, "name": "", "segments": video_track_segments,
     }]
-    if text_track_segments:
-        tracks.append({
-            "id": gen(), "type": "text", "attribute": 0, "flag": 0,
-            "is_default_name": True, "name": "", "segments": text_track_segments,
-        })
+    for segs in (text_track_segments, title_track_segments):
+        if segs:
+            tracks.append({
+                "id": gen(), "type": "text", "attribute": 0, "flag": 0,
+                "is_default_name": True, "name": "", "segments": segs,
+            })
 
     base["tracks"] = tracks
     base["duration"] = total_us

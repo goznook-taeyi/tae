@@ -132,6 +132,17 @@ def transcribe(path: str, source_id: str, language: str | None = None,
 
     최초 호출 시 모델을 내려받아 캐시한다(오프라인 환경은 미리 캐시 필요).
     """
+    cues, _words = transcribe_words(path, source_id, language=language,
+                                    model_size=model_size)
+    return cues
+
+
+def transcribe_words(path: str, source_id: str, language: str | None = None,
+                     model_size: str = "base") -> tuple[list[dict], list[dict]]:
+    """음성인식 → (자막 cue 목록, 단어 타임스탬프 목록).
+
+    단어 목록은 대본-전사 정렬(align)에 쓰인다: [{"start","end","text"}].
+    """
     try:
         from faster_whisper import WhisperModel
     except ImportError as e:  # pragma: no cover - 런타임 의존성
@@ -140,6 +151,16 @@ def transcribe(path: str, source_id: str, language: str | None = None,
         ) from e
 
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(path, language=language)
-    raw = [{"start": s.start, "end": s.end, "text": s.text} for s in segments]
-    return cues_from_segments(raw, source_id)
+    segments, _info = model.transcribe(path, language=language,
+                                       word_timestamps=True)
+    raw: list[dict] = []
+    words: list[dict] = []
+    for s in segments:
+        raw.append({"start": s.start, "end": s.end, "text": s.text})
+        for w in (s.words or []):
+            words.append({"start": w.start, "end": w.end, "text": w.word})
+    cues = cues_from_segments(raw, source_id)
+    if not words:  # 모델이 단어 타임스탬프를 못 주면 cue를 쪼개 근사
+        from .align import words_from_cues
+        words = words_from_cues(cues)
+    return cues, words

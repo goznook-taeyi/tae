@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import subprocess
@@ -14,25 +15,28 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import ffmpeg_utils, pipeline
+from . import ffmpeg_utils, installer, pipeline
+from .adapters import kitty_solting
 
 
 class App(ttk.Frame):
     def __init__(self, master: tk.Tk):
         super().__init__(master, padding=12)
         master.title("숏폼 오토에디터 → CapCut")
-        master.minsize(640, 520)
+        master.minsize(680, 600)
         self.grid(sticky="nsew")
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
 
         self._inputs: list[str] = []
         self._plan_path: str | None = None
+        self._script_rows: list[kitty_solting.ScriptRow] = []
         self._last_output: str | None = None
         self._log_q: queue.Queue[str] = queue.Queue()
 
         self._build()
         self._check_ffmpeg()
+        self._refresh_templates()
         self.after(100, self._drain_log)
 
     # -- UI 구성 --
@@ -54,14 +58,20 @@ class App(ttk.Frame):
                                  sticky="ew", pady=8)
         row += 1
 
-        ttk.Label(self, text="2. 기획안 (선택 — 없으면 후킹→유지→Main→CTA 자동 기획)").grid(
+        ttk.Label(self, text="2. 기획안 (키티조정기 시트 JSON/CSV — 없으면 자동 기획)").grid(
             row=row, column=0, columnspan=3, sticky="w")
         row += 1
         self.plan_var = tk.StringVar(value="기획안 없음 (자동 기획)")
         ttk.Label(self, textvariable=self.plan_var, foreground="#555").grid(
             row=row, column=0, columnspan=2, sticky="w")
-        ttk.Button(self, text="기획안 JSON…", command=self._pick_plan).grid(
+        ttk.Button(self, text="기획안 열기…", command=self._pick_plan).grid(
             row=row, column=2, sticky="e")
+        row += 1
+        ttk.Label(self, text="기획안 행(숏폼)").grid(row=row, column=0, sticky="w")
+        self.row_var = tk.StringVar()
+        self.row_combo = ttk.Combobox(self, textvariable=self.row_var,
+                                      state="disabled", values=[])
+        self.row_combo.grid(row=row, column=1, columnspan=2, sticky="ew")
         row += 1
 
         ttk.Separator(self).grid(row=row, column=0, columnspan=3,
@@ -82,16 +92,34 @@ class App(ttk.Frame):
 
         ttk.Label(self, text="CapCut draft 폴더").grid(row=row, column=0, sticky="w")
         self.root_var = tk.StringVar(value=pipeline.default_projects_root() or "")
-        ttk.Entry(self, textvariable=self.root_var).grid(
-            row=row, column=1, sticky="ew")
+        root_entry = ttk.Entry(self, textvariable=self.root_var)
+        root_entry.grid(row=row, column=1, sticky="ew")
+        root_entry.bind("<FocusOut>", lambda _e: self._refresh_templates())
         ttk.Button(self, text="찾기…", command=self._pick_root).grid(
             row=row, column=2, sticky="e")
+        row += 1
+
+        ttk.Label(self, text="템플릿 프로젝트").grid(row=row, column=0, sticky="w")
+        self.template_var = tk.StringVar()
+        self.template_combo = ttk.Combobox(self, textvariable=self.template_var,
+                                           state="readonly", values=[])
+        self.template_combo.grid(row=row, column=1, columnspan=2, sticky="ew")
+        row += 1
+        ttk.Label(self, text="(실제 CapCut 프로젝트를 골라야 자막 스타일·호환성이 유지됩니다)",
+                  foreground="#777").grid(row=row, column=0, columnspan=3, sticky="w")
         row += 1
 
         self.copy_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(self, text="원본 미디어를 프로젝트 폴더로 복사",
                         variable=self.copy_var).grid(
             row=row, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        row += 1
+
+        self.register_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self,
+                        text="CapCut에 등록 (캡컷을 완전히 닫은 상태에서만 — 목록에 바로 표시됨)",
+                        variable=self.register_var).grid(
+            row=row, column=0, columnspan=3, sticky="w")
         row += 1
 
         self.run_btn = ttk.Button(self, text="편집 실행 ▶", command=self._run)
@@ -118,15 +146,59 @@ class App(ttk.Frame):
 
     def _pick_plan(self) -> None:
         path = filedialog.askopenfilename(
-            title="기획안 JSON", filetypes=[("JSON", "*.json"), ("모두", "*.*")])
-        if path:
-            self._plan_path = path
-            self.plan_var.set(os.path.basename(path))
+            title="기획안 (키티조정기 JSON/CSV 또는 수동 컷 리스트 JSON)",
+            filetypes=[("기획안", "*.json *.csv"), ("모두", "*.*")])
+        if not path:
+            return
+        self._plan_path = path
+        self._script_rows = []
+        try:
+            if path.lower().endswith(".csv"):
+                with open(path, encoding="utf-8-sig") as f:
+                    self._script_rows = kitty_solting.parse_script_csv(
+                        f.read(), title=os.path.basename(path))
+            else:
+                with open(path, encoding="utf-8") as f:
+                    raw = json.load(f)
+                if kitty_solting.is_script_sheet(raw):
+                    self._script_rows = kitty_solting.parse_script_rows(raw)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("기획안 읽기 실패", str(e))
+            self._plan_path = None
+            return
+
+        if self._script_rows:
+            self.plan_var.set(f"{os.path.basename(path)} "
+                              f"(대본 시트 · {len(self._script_rows)}행)")
+            self.row_combo.configure(
+                state="readonly",
+                values=[r.summary() for r in self._script_rows])
+            self.row_combo.current(0)
+            self._log_msg(f"기획안 로드: 숏폼 {len(self._script_rows)}개 행 — "
+                          "편집할 행을 선택하세요.")
+        else:
+            self.plan_var.set(os.path.basename(path) + " (수동 컷 리스트)")
+            self.row_combo.set("")
+            self.row_combo.configure(state="disabled", values=[])
 
     def _pick_root(self) -> None:
         path = filedialog.askdirectory(title="CapCut draft 폴더 선택")
         if path:
             self.root_var.set(path)
+            self._refresh_templates()
+
+    def _refresh_templates(self) -> None:
+        root = self.root_var.get().strip()
+        self._template_dirs = installer.find_template_projects(root) if root else []
+        names = [os.path.basename(d) for d in self._template_dirs]
+        self.template_combo.configure(values=["(자동 — 최근 프로젝트)"] + names)
+        self.template_combo.current(0)
+
+    def _selected_template(self) -> str | None:
+        idx = self.template_combo.current()
+        if idx <= 0:  # 자동
+            return None
+        return self._template_dirs[idx - 1]
 
     def _log_msg(self, msg: str) -> None:
         self._log_q.put(msg)
@@ -154,21 +226,48 @@ class App(ttk.Frame):
         if not self.root_var.get().strip():
             messagebox.showwarning("경로 필요", "CapCut draft 폴더를 지정하세요.")
             return
+        if self._script_rows and len(self._inputs) != 1:
+            messagebox.showwarning(
+                "영상 1개 필요",
+                "대본 시트 모드는 그 행을 촬영한 영상 1개가 필요합니다.")
+            return
+        if self.register_var.get() and installer.capcut_running():
+            messagebox.showwarning(
+                "CapCut 실행 중",
+                "CapCut이 실행 중입니다. 등록(목록 표시)은 캡컷을 완전히 닫은 뒤에만 "
+                "안전합니다.\n캡컷을 종료하고 다시 실행해 주세요.")
+            return
         self.run_btn.configure(state="disabled")
         self.open_btn.configure(state="disabled")
         threading.Thread(target=self._worker, daemon=True).start()
 
     def _worker(self) -> None:
         try:
-            out = pipeline.run(
-                inputs=self._inputs or None,
-                plan=self._plan_path,
-                project_name=self.name_var.get().strip() or "shortform_auto",
-                projects_root=self.root_var.get().strip(),
-                language=self.lang_var.get().strip() or None,
-                copy_media=self.copy_var.get(),
-                progress=self._log_msg,
-            )
+            name = self.name_var.get().strip() or "shortform_auto"
+            root = self.root_var.get().strip()
+            if self._script_rows:
+                row_idx = max(self.row_combo.current(), 0)
+                out = pipeline.run_scripted(
+                    self._inputs[0],
+                    self._script_rows[row_idx],
+                    project_name=name,
+                    projects_root=root,
+                    language=self.lang_var.get().strip() or "ko",
+                    template_dir=self._selected_template(),
+                    install=self.register_var.get(),
+                    copy_media=self.copy_var.get(),
+                    progress=self._log_msg,
+                )
+            else:
+                out = pipeline.run(
+                    inputs=self._inputs or None,
+                    plan=self._plan_path,
+                    project_name=name,
+                    projects_root=root,
+                    language=self.lang_var.get().strip() or None,
+                    copy_media=self.copy_var.get(),
+                    progress=self._log_msg,
+                )
             self._last_output = out
             self._log_msg("✅ CapCut을 열면 프로젝트가 보입니다.")
             self.open_btn.configure(state="normal")

@@ -12,6 +12,7 @@ import os
 from typing import Callable, Optional, Union
 
 from . import align as align_mod
+from . import autocut as autocut_mod
 from . import capcut_draft, captions as captions_mod, editplan as editplan_mod
 from . import ffmpeg_utils, installer, timeline
 from .adapters import kitty_solting
@@ -207,26 +208,54 @@ def run_scripted(
     cues, words = transcribe_words_fn(video_path, "v1", language=language)
     _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
 
-    # --- 대본 정렬 ---
+    # --- 1차: 대본-전사 정렬 (대본대로 말한 경우) ---
     units = kitty_solting.script_units(script_row)
     _log(progress, f"대본 {len(units)}개 비트를 전사와 정렬 중…")
     result = align_mod.align_script(words, units)
-    for w in result.warnings:
-        _log(progress, f"⚠ {w}")
-    if not result.clips:
-        raise ValueError(
-            "대본과 일치하는 발화 구간을 하나도 찾지 못했습니다. "
-            "영상과 기획안 행이 맞는지 확인하세요.")
-    hit = [c for c in result.clips]
-    _log(progress, f"정렬 성공 {len(hit)}/{len(units)} 비트 "
-                   f"(평균 유사도 {sum(c.score for c in hit)/len(hit):.2f})")
+    matched_ratio = len(result.clips) / max(len(units), 1)
 
-    # --- EditPlan 구성 (역할 순서 유지, 매칭 순서대로) ---
-    src = SourceClip(id="v1", path=video_path)
     grouped: dict[str, list[PlanClip]] = {}
-    for clip in result.clips:
-        grouped.setdefault(clip.unit.role, []).append(
-            PlanClip(source_id="v1", start=clip.start, end=clip.end))
+    if matched_ratio >= 0.5:
+        for w in result.warnings:
+            _log(progress, f"⚠ {w}")
+        _log(progress, f"정렬 성공 {len(result.clips)}/{len(units)} 비트 "
+                       f"(평균 유사도 "
+                       f"{sum(c.score for c in result.clips)/len(result.clips):.2f})")
+        for clip in result.clips:
+            grouped.setdefault(clip.unit.role, []).append(
+                PlanClip(source_id="v1", start=clip.start, end=clip.end))
+    else:
+        # --- 2차(폴백): 전사 기반 자동컷 (기획안은 주제만 잡고 즉흥 발화한 경우) ---
+        _log(progress,
+             f"대본과 발화 일치율이 낮습니다({len(result.clips)}/{len(units)} 비트) — "
+             "전사 기반 자동컷으로 전환합니다 (무음·반복 테이크 제거).")
+        blocks = autocut_mod.blocks_from_words(words)
+        n_raw = len(blocks)
+        blocks = autocut_mod.dedupe_takes(blocks)
+        if n_raw > len(blocks):
+            _log(progress, f"반복 테이크 {n_raw - len(blocks)}개 블록 제거 "
+                           f"(마지막 테이크 유지)")
+        if not blocks:
+            raise ValueError("발화 구간을 찾지 못했습니다. 영상에 음성이 있는지, "
+                             "STT 언어 설정이 맞는지 확인하세요.")
+        autocut_mod.pad_blocks(blocks)
+        roles = autocut_mod.plan_blocks(
+            blocks,
+            hook_hint=script_row.hook or script_row.top_question,
+            cta_hint=script_row.cta)
+        for role, blks in roles.items():
+            grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end)
+                             for b in blks]
+        _log(progress, "자동컷 배치: " + ", ".join(
+            f"{r} {len(bs)}컷" for r, bs in roles.items()))
+
+    if not grouped:
+        raise ValueError(
+            "편집할 구간을 하나도 찾지 못했습니다. "
+            "영상과 기획안 행이 맞는지 확인하세요.")
+
+    # --- EditPlan 구성 (역할 순서 유지) ---
+    src = SourceClip(id="v1", path=video_path)
     sections = [Section(role=r, clips=grouped[r])
                 for r in ("hook", "retention", "main", "cta") if r in grouped]
     ep = EditPlan(sources=[src], sections=sections, captions="auto")

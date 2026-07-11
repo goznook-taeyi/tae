@@ -7,6 +7,9 @@
 
 - **타임코드 불필요** — 기획안은 대본 그대로. STT 전사와 대본을 유사도 정렬해
   각 비트가 실제로 발화된 구간을 찾아 컷 (NG 테이크는 **마지막 테이크** 채택)
+- **즉흥 촬영 대응** — 기획안은 주제만 잡고 실제 발화가 다른 경우(흔함), 정렬
+  일치율이 낮으면 자동으로 **전사 기반 자동컷**으로 전환: 무음·반복 테이크 제거
+  후 순서 유지, 후킹/CTA는 기획안 텍스트와 느슨한 유사도로 배치
 - 자막 자동 생성(수작업 제거), 후킹 구간엔 대사 자막 대신 **상단질문 타이틀**
 - 리프레임/화면조정 없음 — **입력 영상 비율 그대로**
 - 실제 CapCut 프로젝트를 **템플릿(프로토타입)으로 복제**해 스키마·자막 스타일을
@@ -49,6 +52,9 @@ python main.py        (또는 run_editor.bat)
         ├─ STT(faster-whisper, 단어 타임스탬프)
         ▼
   대본-전사 정렬 (align.py)  ── 비트별 발화 구간 탐지, NG면 마지막 테이크
+        │   일치율 50% 미만(즉흥 발화)이면 ↓ 폴백
+  전사 기반 자동컷 (autocut.py) ── 무음 분할 → 반복 테이크 제거(마지막 유지)
+        │                          → 후킹/CTA 느슨한 힌트 배치, 나머지 main
         ▼
   EditPlan → 컷 세그먼트 배치 → 자막 재매핑(후킹 구간 제외) + 상단질문 타이틀
         ▼
@@ -96,6 +102,7 @@ python -m pytest        # 82 passed — STT/FFmpeg/CapCut 없이 순수 로직 �
 | 파일 | 역할 |
 |---|---|
 | `shortform_editor/align.py` | **대본-전사 정렬** (비트별 발화 구간 탐지, 최종 테이크 선택) |
+| `shortform_editor/autocut.py` | **전사 기반 자동컷** (정렬 폴백 — 무음·반복 테이크 제거, 힌트 배치) |
 | `shortform_editor/adapters/kitty_solting.py` | 키티조정기 시트(JSON/CSV) 파서 + 레거시 컷 리스트 |
 | `shortform_editor/captions.py` | STT(faster-whisper, 단어 타임스탬프) 래퍼, 자막 cue 분할 |
 | `shortform_editor/editplan.py` | 편집 계약(EditPlan) 모델·검증·폴백 기획기 |

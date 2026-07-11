@@ -128,3 +128,45 @@ class TestRunScripted:
                                    encoding="utf-8"))
         names = [e["draft_name"] for e in root_meta["all_draft_store"]]
         assert "르디테_여름1" not in names
+
+
+def fake_transcribe_improvised(path, source_id, language=None):
+    """즉흥 촬영본: 대본과 내용이 다름 (주제만 같음). NG 테이크 1개 포함."""
+    words = []
+    words += _speech("여름에 시술 받아도 되냐고 정말 많이들 물어보시는데요", 0.0)
+    words += _speech("사실 온도나 햇빛이랑 필러는 큰 상관이 없거든요", 15.0)
+    words += _speech("사실 온도나 햇빛이랑 필러는 큰 상관이 없어요 진짜로", 30.0)  # 재테이크
+    words += _speech("진짜 중요한 건 시술 받고 나서 며칠간의 관리예요", 45.0)
+    words += _speech("궁금한 거 있으면 댓글에 여름시술 이라고 남겨주세요", 60.0)
+    cues = [{"source_id": source_id, "start": w["start"], "end": w["end"],
+             "text": w["text"]} for w in words]
+    return cues, words
+
+
+class TestAutocutFallback:
+    def test_falls_back_when_speech_differs_from_script(self, env):
+        logs = []
+        out = pipeline.run_scripted(
+            "C:/videos/즉흥촬영본.mp4", ROW,
+            project_name="즉흥테스트", projects_root=env,
+            progress=logs.append,
+            transcribe_words_fn=fake_transcribe_improvised,
+            probe_duration_fn=lambda p: 100.0,
+            probe_resolution_fn=lambda p: (1080, 1920),
+            running_check=lambda: False)
+        assert any("자동컷으로 전환" in m for m in logs)
+        draft = json.load(open(os.path.join(out, "draft_content.json"),
+                               encoding="utf-8"))
+        vsegs = [t for t in draft["tracks"]
+                 if t["type"] == "video"][0]["segments"]
+        # NG 테이크(15초대)는 빠지고 재테이크(30초대)만 남는다
+        starts_s = [s["source_timerange"]["start"] / 1e6 for s in vsegs]
+        assert not any(14.0 <= s <= 16.0 for s in starts_s)
+        assert any(29.0 <= s <= 31.0 for s in starts_s)
+        # hook(주제 비슷한 첫 블록)이 맨 앞, CTA(댓글 유도)가 맨 뒤
+        assert starts_s[0] <= 1.0
+        assert 59.0 <= starts_s[-1] <= 61.0
+        # 상단질문 타이틀은 그대로 얹힘
+        all_texts = [json.loads(m["content"])["text"]
+                     for m in draft["materials"]["texts"]]
+        assert ROW.top_question in all_texts

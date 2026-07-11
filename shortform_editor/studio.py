@@ -729,13 +729,44 @@ class Studio:
         link.pack(side="right")
         link.bind("<Button-1>",
                   lambda _e, p=log_path: subprocess.Popen(["notepad.exe", p]))
+        project_dir = os.path.join(self._projects_root(), project)
         self._jobs.append({"proc": proc, "dot": dot, "stat": stat,
-                           "log": log_path, "file": log_file, "done": False})
+                           "log": log_path, "file": log_file, "done": False,
+                           "dir": project_dir,
+                           "started": datetime.datetime.now()})
         self._log_msg("Claude 다듬기를 백그라운드로 시작했습니다 (작업 현황 참고).")
 
+    @staticmethod
+    def _last_activity(project_dir: str) -> float | None:
+        """프로젝트 파일들의 최근 수정 시각 — Claude가 실제로 일하는지의 증거."""
+        latest = None
+        try:
+            for fn in os.listdir(project_dir):
+                p = os.path.join(project_dir, fn)
+                if os.path.isfile(p):
+                    m = os.path.getmtime(p)
+                    latest = m if latest is None else max(latest, m)
+        except OSError:
+            pass
+        return latest
+
     def _poll_jobs(self) -> None:
+        now = datetime.datetime.now()
         for j in self._jobs:
-            if j["done"] or j["proc"].poll() is None:
+            if j["done"]:
+                continue
+            if j["proc"].poll() is None:
+                # 진행 중 — 경과 + 마지막 활동(파일 수정) 시각 표시
+                el = (now - j["started"]).seconds
+                act = self._last_activity(j.get("dir", ""))
+                if act:
+                    ago = max(0, int(now.timestamp() - act))
+                    act_txt = (f"방금 활동" if ago < 90
+                               else f"{ago // 60}분 전 활동")
+                else:
+                    act_txt = "활동 감지 안 됨"
+                j["stat"].configure(
+                    text=f"다듬는 중 · {el // 60}:{el % 60:02d} 경과 · {act_txt}")
                 continue
             j["done"] = True
             j["file"].close()

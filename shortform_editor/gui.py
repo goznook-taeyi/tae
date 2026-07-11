@@ -151,8 +151,9 @@ class App(ttk.Frame):
                   foreground="#777").grid(row=row, column=0, columnspan=3, sticky="w")
         row += 1
 
-        self.copy_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self, text="원본 미디어를 프로젝트 폴더로 복사",
+        self.copy_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self,
+                        text="영상 사본을 프로젝트 폴더에 저장 (기본 꺼짐 — 원본을 그대로 참조해 용량 절약)",
                         variable=self.copy_var).grid(
             row=row, column=0, columnspan=3, sticky="w", pady=(4, 0))
         row += 1
@@ -334,10 +335,11 @@ class App(ttk.Frame):
         if not self.root_var.get().strip():
             messagebox.showwarning("경로 필요", "CapCut draft 폴더를 지정하세요.")
             return
-        if self._script_rows and len(self._inputs) != 1:
+        if len(self._inputs) != 1:
             messagebox.showwarning(
                 "영상 1개 필요",
-                "대본 시트 모드는 그 행을 촬영한 영상 1개가 필요합니다.")
+                "촬영본 영상 1개를 선택하세요. (여러 클립 이어붙이기는 "
+                "타임코드 기획안 JSON으로만 지원됩니다)")
             return
         if self.register_var.get() and installer.capcut_running():
             messagebox.showwarning(
@@ -363,26 +365,30 @@ class App(ttk.Frame):
                         progress=self._log_msg))
                 else:
                     inputs.append(item)
-            if self._script_rows:
-                row_idx = max(self.row_combo.current(), 0)
-                out = pipeline.run_scripted(
-                    inputs[0],
-                    self._script_rows[row_idx],
-                    project_name=name,
-                    projects_root=root,
-                    language=self.lang_var.get().strip() or "ko",
-                    template_dir=self._selected_template(),
-                    install=self.register_var.get(),
-                    copy_media=self.copy_var.get(),
-                    progress=self._log_msg,
-                )
-            else:
+            if self._plan_path and not self._script_rows:
+                # 타임코드가 있는 수동 컷 리스트 JSON (레거시 — 등록 없음)
                 out = pipeline.run(
                     inputs=inputs or None,
                     plan=self._plan_path,
                     project_name=name,
                     projects_root=root,
                     language=self.lang_var.get().strip() or None,
+                    copy_media=self.copy_var.get(),
+                    progress=self._log_msg,
+                )
+            else:
+                # 기본 경로: 기획안이 있든 없든 실제 스키마 복제 + 등록
+                row = None
+                if self._script_rows:
+                    row = self._script_rows[max(self.row_combo.current(), 0)]
+                out = pipeline.run_scripted(
+                    inputs[0],
+                    row,
+                    project_name=name,
+                    projects_root=root,
+                    language=self.lang_var.get().strip() or "ko",
+                    template_dir=self._selected_template(),
+                    install=self.register_var.get(),
                     copy_media=self.copy_var.get(),
                     progress=self._log_msg,
                 )

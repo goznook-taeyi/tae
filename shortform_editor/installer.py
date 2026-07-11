@@ -211,6 +211,19 @@ def update_project_files(
     return bdir
 
 
+def restore_backup(project_dir: str, backup_dir: str) -> list[str]:
+    """update_project_files가 남긴 백업에서 수정 전 상태로 복원한다."""
+    restored: list[str] = []
+    for fn in ("draft_content.json",) + MIRROR_FILES + ("draft_meta_info.json",):
+        src = os.path.join(backup_dir, fn)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(project_dir, fn))
+            restored.append(fn)
+    if not restored:
+        raise FileNotFoundError(f"백업에 복원할 파일이 없습니다: {backup_dir}")
+    return restored
+
+
 def list_projects(projects_root: str) -> list[tuple[str, str]]:
     """(표시명, 폴더 경로) 목록 — 수정시각 최신순. GUI 프로젝트 선택용."""
     out = []

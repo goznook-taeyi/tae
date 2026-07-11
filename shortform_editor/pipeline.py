@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Callable, Optional, Union
 
 from . import align as align_mod
@@ -23,6 +25,49 @@ from .editplan import EditPlan, PlanClip, Section, SourceClip
 def _log(progress: Optional[Callable[[str], None]], msg: str) -> None:
     if progress:
         progress(msg)
+
+
+@dataclass
+class EditOptions:
+    """편집 규칙/제약 — GUI(포맷·무음 강도·목표 길이·전사 태깅)에서 설정한다."""
+
+    fmt: str = "short"                    # short(구조 재배치) | mid(순서 유지) | long(최소 개입)
+    max_silence: float = autocut_mod.MAX_SILENCE   # 무음 컷 기준(초)
+    target_range: Optional[tuple] = None  # (최소, 최대)초 — 초과 시 저가치 main 컷 탈락
+    pinned_hook: Optional[tuple] = None   # 훅으로 고정할 원본 구간 (start, end)
+    deleted: list = field(default_factory=list)    # 삭제 지정 [(start, end)]
+    must_keep: list = field(default_factory=list)  # 보호 지정 [(start, end)]
+
+
+@dataclass
+class ModifyResult:
+    """run_modify 결과 — GUI의 요약 패널/되돌리기/태깅에 쓰인다."""
+
+    project_dir: str
+    backup_dir: str = ""
+    segments: list = field(default_factory=list)   # [{"role","src_start","src_end","duration","text"}]
+    warnings: list = field(default_factory=list)
+    sentences: list = field(default_factory=list)  # analyze_only: [{"start","end","text"}]
+    analyzed_only: bool = False
+
+
+def _mid_t(w: dict) -> float:
+    return (float(w["start"]) + float(w["end"])) / 2
+
+
+def _in_ranges(t: float, ranges: list) -> bool:
+    return any(a <= t < b for a, b in ranges)
+
+
+def _overlaps(s: float, e: float, ranges: list) -> bool:
+    return any(min(e, b) - max(s, a) > 0 for a, b in ranges)
+
+
+def _range_text(words: list, s: float, e: float, limit: int = 40) -> str:
+    txt = " ".join((w.get("text") or "").strip() for w in words
+                   if s <= _mid_t(w) < e)
+    txt = " ".join(txt.split())
+    return txt[:limit] + ("…" if len(txt) > limit else "")
 
 
 def _resolve_plan(
@@ -164,13 +209,27 @@ def _compute_edit(
     script_row: Optional[ScriptRow],
     video_path: str,
     progress: Optional[Callable[[str], None]] = None,
+    options: Optional[EditOptions] = None,
 ):
-    """전사 + (선택)기획안 → (segments, 자막, 타이틀). 컷 계산의 공용 코어.
+    """전사 + (선택)기획안 + 옵션 → (segments, 자막, 타이틀, 경고). 컷 계산의 공용 코어.
 
-    마지막에 모든 컷 구간 안의 0.2초 이상 무음을 정밀 트리밍한다.
+    포맷 규칙: short=구조 재배치+타이틀, mid=순서 유지, long=무음·NG 컷만.
+    마지막에 모든 컷 구간 안의 무음(options.max_silence 이상)을 정밀 트리밍한다.
     """
-    # --- 1차: 대본-전사 정렬 (기획안이 있고 대본대로 말한 경우) ---
-    if script_row is not None:
+    opt = options or EditOptions()
+    warns: list[str] = []
+
+    # 삭제 지정 구간의 발화는 처음부터 없는 것으로 취급한다
+    if opt.deleted:
+        n0 = len(words)
+        words = [w for w in words if not _in_ranges(_mid_t(w), opt.deleted)]
+        _log(progress, f"삭제 지정 {len(opt.deleted)}구간 반영 — "
+                       f"단어 {n0 - len(words)}개 제외")
+
+    structured = opt.fmt == "short"
+
+    # --- 1차: 대본-전사 정렬 (기획안이 있고, 롱폼이 아닐 때) ---
+    if script_row is not None and opt.fmt != "long":
         units = kitty_solting.script_units(script_row)
         _log(progress, f"대본 {len(units)}개 비트를 전사와 정렬 중…")
         result = align_mod.align_script(words, units)
@@ -178,7 +237,8 @@ def _compute_edit(
     else:
         units, result = [], align_mod.AlignResult()
         matched_ratio = 0.0
-        _log(progress, "기획안 없음 — 전사 기반 자동컷으로 편집합니다.")
+        _log(progress, ("롱폼 — 무음·NG 컷만 적용합니다." if opt.fmt == "long"
+                        else "기획안 없음 — 전사 기반 자동컷으로 편집합니다."))
 
     grouped: dict[str, list[PlanClip]] = {}
     if units and matched_ratio >= 0.5:
@@ -206,11 +266,15 @@ def _compute_edit(
             raise ValueError("발화 구간을 찾지 못했습니다. 영상에 음성이 있는지, "
                              "STT 언어 설정이 맞는지 확인하세요.")
         autocut_mod.pad_blocks(blocks)
-        roles = autocut_mod.plan_blocks(
-            blocks,
-            hook_hint=(script_row.hook or script_row.top_question)
-            if script_row else "",
-            cta_hint=script_row.cta if script_row else "")
+        if structured:
+            roles = autocut_mod.plan_blocks(
+                blocks,
+                hook_hint=(script_row.hook or script_row.top_question)
+                if script_row else "",
+                cta_hint=script_row.cta if script_row else "")
+        else:
+            # 미드폼/롱폼: 순서 유지 — 구조 재배치 없음
+            roles = {"main": blocks}
         for role, blks in roles.items():
             grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end)
                              for b in blks]
@@ -222,18 +286,91 @@ def _compute_edit(
             "편집할 구간을 하나도 찾지 못했습니다. "
             "영상과 기획안 행이 맞는지 확인하세요.")
 
-    # --- 무음 정밀 트리밍: 컷 구간 안의 0.2초 이상 무음을 전부 제거 ---
+    # --- 훅 고정 (전사 태깅에서 지정, 숏폼 전용) ---
+    if opt.pinned_hook and structured:
+        ph = (float(opt.pinned_hook[0]), float(opt.pinned_hook[1]))
+        for role in list(grouped):
+            grouped[role] = [c for c in grouped[role]
+                             if not _overlaps(c.start, c.end, [ph])]
+        grouped["hook"] = [PlanClip(source_id="v1", start=ph[0], end=ph[1])]
+        _log(progress, f"훅 고정: {ph[0]:.1f}~{ph[1]:.1f}초")
+
+    # --- 꼭 살리기 지정: 누락됐으면 main에 추가 ---
+    for mk in opt.must_keep:
+        s, e = float(mk[0]), float(mk[1])
+        covered = any(_overlaps(c.start, c.end, [(s, e)])
+                      for cs in grouped.values() for c in cs)
+        if not covered:
+            grouped.setdefault("main", []).append(
+                PlanClip(source_id="v1", start=s, end=e))
+            _log(progress, f"꼭 살리기 반영: {s:.1f}~{e:.1f}초")
+    if "main" in grouped:
+        grouped["main"].sort(key=lambda c: c.start)
+
+    # --- 무음 정밀 트리밍: 컷 구간 안의 무음(기준 이상)을 전부 제거 ---
     n_before = sum(len(cs) for cs in grouped.values())
     for role in list(grouped):
         trimmed: list[PlanClip] = []
         for c in grouped[role]:
-            for s, e in autocut_mod.trim_silence(words, c.start, c.end):
+            for s, e in autocut_mod.trim_silence(words, c.start, c.end,
+                                                 max_silence=opt.max_silence):
                 trimmed.append(PlanClip(source_id=c.source_id, start=s, end=e))
         grouped[role] = trimmed
     n_after = sum(len(cs) for cs in grouped.values())
     if n_after > n_before:
-        _log(progress, f"무음 정밀 컷: {autocut_mod.MAX_SILENCE}초 이상 무음 제거 "
+        _log(progress, f"무음 정밀 컷: {opt.max_silence}초 이상 무음 제거 "
                        f"({n_before}→{n_after}컷)")
+
+    # --- 목표 길이: 초과분은 저가치 main 컷부터 탈락 (훅/CTA/살리기 보호) ---
+    if opt.target_range:
+        tmin, tmax = float(opt.target_range[0]), float(opt.target_range[1])
+        total = sum(c.duration for cs in grouped.values() for c in cs)
+        if total > tmax and grouped.get("main"):
+            hints = ""
+            if script_row is not None:
+                hints = align_mod.normalize(
+                    f"{script_row.hook} {script_row.main} {script_row.cta} "
+                    f"{script_row.top_question}")
+
+            def _value(c: PlanClip, idx: int, n: int) -> float:
+                if _overlaps(c.start, c.end, opt.must_keep):
+                    return float("inf")  # 보호
+                if hints:
+                    ct = align_mod.normalize(_range_text(words, c.start, c.end,
+                                                         limit=10_000))
+                    if not ct:
+                        return 0.0
+                    sm = SequenceMatcher(None, ct, hints)
+                    match = sum(b.size for b in sm.get_matching_blocks())
+                    return match / len(ct)
+                # 힌트가 없으면 가운데(양끝에서 먼 컷)부터 버린다
+                return -min(idx, n - 1 - idx)
+
+            mains = grouped["main"]
+            order = sorted(range(len(mains)),
+                           key=lambda i: _value(mains[i], i, len(mains)))
+            dropped = set()
+            for i in order:
+                if total <= tmax:
+                    break
+                if _value(mains[i], i, len(mains)) == float("inf"):
+                    continue
+                dropped.add(i)
+                total -= mains[i].duration
+                _log(progress, f"길이 조절: main 컷 탈락 "
+                               f"({mains[i].start:.1f}~{mains[i].end:.1f}초)")
+            grouped["main"] = [c for i, c in enumerate(mains)
+                               if i not in dropped]
+            if not grouped["main"]:
+                del grouped["main"]
+        total = sum(c.duration for cs in grouped.values() for c in cs)
+        if total > tmax:
+            warns.append(f"목표 최대 {tmax:.0f}초를 초과합니다 ({total:.0f}초) — "
+                         "보호된 컷이 많아 더 줄이지 못했습니다.")
+        elif total < tmin:
+            warns.append(f"목표 최소 {tmin:.0f}초보다 짧습니다 ({total:.0f}초).")
+        for w in warns:
+            _log(progress, f"⚠ {w}")
 
     # --- EditPlan 구성 (역할 순서 유지) ---
     src = SourceClip(id="v1", path=video_path)
@@ -254,9 +391,10 @@ def _compute_edit(
 
     final_caps = [c for c in final_caps if not _in_hook(c)]
 
-    # 상단질문 타이틀 오버레이 (후킹 구간, 없으면 첫 3초)
+    # 상단질문 타이틀 오버레이 (숏폼 전용 — 후킹 구간, 없으면 첫 3초)
     titles: list[dict] = []
-    tq = (script_row.top_question or "").strip() if script_row else ""
+    tq = ((script_row.top_question or "").strip()
+          if script_row and structured else "")
     if tq:
         if hook_ranges:
             t_start, t_end = hook_ranges[0][0], hook_ranges[-1][1]
@@ -267,7 +405,7 @@ def _compute_edit(
 
     _log(progress, f"세그먼트 {len(segments)}개, 자막 {len(final_caps)}개, "
                    f"타이틀 {len(titles)}개 — 총 {timeline.total_duration(segments):.1f}초")
-    return segments, final_caps, titles
+    return segments, final_caps, titles, warns
 
 
 def run_scripted(
@@ -338,7 +476,7 @@ def run_scripted(
     cues, words = transcribe_words_fn(video_path, "v1", language=language)
     _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
 
-    segments, final_caps, titles = _compute_edit(
+    segments, final_caps, titles, _warns = _compute_edit(
         words, cues, script_row, video_path, progress)
 
     # --- 캔버스 (입력 비율 그대로) ---
@@ -369,31 +507,62 @@ def run_scripted(
     return out_dir
 
 
+TRANSCRIPT_CACHE = ".autoedit_transcript.json"
+
+
+def _load_transcript_cache(project_dir: str, src_path: str,
+                           language: Optional[str]):
+    path = os.path.join(project_dir, TRANSCRIPT_CACHE)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            c = json.load(f)
+        size = os.path.getsize(src_path) if os.path.isfile(src_path) else 0
+        if (c.get("video") == src_path and c.get("size") == size
+                and c.get("language") == language):
+            return c["cues"], c["words"]
+    except (OSError, ValueError, KeyError):
+        pass
+    return None
+
+
+def _save_transcript_cache(project_dir: str, src_path: str,
+                           language: Optional[str],
+                           cues: list, words: list) -> None:
+    try:
+        size = os.path.getsize(src_path) if os.path.isfile(src_path) else 0
+        with open(os.path.join(project_dir, TRANSCRIPT_CACHE), "w",
+                  encoding="utf-8") as f:
+            json.dump({"video": src_path, "size": size, "language": language,
+                       "cues": cues, "words": words}, f, ensure_ascii=False)
+    except OSError:
+        pass  # 캐시는 최선 노력 — 실패해도 편집엔 지장 없음
+
+
 def run_modify(
     project_dir: str,
     script_row: Optional[ScriptRow] = None,
     *,
     language: Optional[str] = "ko",
+    options: Optional[EditOptions] = None,
+    analyze_only: bool = False,
+    use_cache: bool = True,
     backup_dir: Optional[str] = None,
     progress: Optional[Callable[[str], None]] = None,
     transcribe_words_fn: Callable[..., tuple] = captions_mod.transcribe_words,
     running_check: Callable[[], bool] = installer.capcut_running,
     require_media: bool = True,
-) -> str:
+) -> ModifyResult:
     """하이브리드 모드(권장): **캡컷이 만든 기존 프로젝트**를 자동 가편집한다.
 
     프로젝트 생성·등록은 캡컷이 이미 했으므로(가장 위험했던 단계 삭제),
-    이 함수는 프로젝트 '내용'만 바꾼다 — 검증된 수정 경로:
-    ① 영상 경로를 프로젝트에서 읽어 STT ② 컷 계산(+0.2초 무음 정밀 컷)
-    ③ 프로젝트 자신을 프로토타입 삼아 트랙 재구성(자막 프로토가 없으면
-    다른 프로젝트에서 차용) ④ 백업 후 콘텐츠+미러+meta만 교체.
-    root_meta_info.json은 건드리지 않는다.
-    """
-    if running_check():
-        raise installer.CapCutRunningError(
-            "CapCut이 실행 중입니다. 편집할 프로젝트가 캡컷에 열려 있으면 "
-            "수정이 유실됩니다 — 캡컷을 완전히 닫고 다시 실행해 주세요.")
+    이 함수는 프로젝트 '내용'만 바꾼다. root_meta_info.json은 건드리지 않는다.
 
+    analyze_only=True: STT까지만 수행하고 문장 목록을 돌려준다(캐시 저장).
+    쓰기가 없으므로 캡컷이 실행 중이어도 된다 — GUI의 [① 분석] 단계.
+    전사는 프로젝트 폴더의 캐시(.autoedit_transcript.json)로 재사용된다.
+    """
     name = os.path.basename(project_dir)
     draft = installer.load_template(project_dir)
     protos = capcut_draft.harvest_prototypes(draft, require_text=False)
@@ -410,6 +579,45 @@ def run_modify(
         raise FileNotFoundError(
             f"프로젝트가 참조하는 영상 파일이 없습니다: {src_path}\n"
             "SD카드/외장 드라이브가 분리되지 않았는지 확인하세요.")
+
+    # --- 전사 (캐시 우선) ---
+    cached = _load_transcript_cache(project_dir, src_path, language) \
+        if use_cache else None
+    if cached:
+        cues, words = cached
+        _log(progress, "전사 캐시 재사용 (STT 생략)")
+    else:
+        _log(progress, f"음성인식(STT) 중: {os.path.basename(src_path)} … "
+                       "(최초 실행은 모델 다운로드로 오래 걸릴 수 있음)")
+
+        def _prog(r: float) -> None:
+            _log(progress, f"[PROG] {r:.2f}")
+
+        try:
+            cues, words = transcribe_words_fn(src_path, "v1",
+                                              language=language,
+                                              progress_fn=_prog)
+        except TypeError:  # progress_fn을 모르는 (테스트) 구현
+            cues, words = transcribe_words_fn(src_path, "v1",
+                                              language=language)
+        _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
+        if use_cache:
+            _save_transcript_cache(project_dir, src_path, language,
+                                   cues, words)
+
+    if analyze_only:
+        blocks = autocut_mod.blocks_from_words(words)
+        sentences = [{"start": b.start, "end": b.end, "text": b.text}
+                     for b in blocks]
+        _log(progress, f"분석 완료 — 문장 {len(sentences)}개")
+        return ModifyResult(project_dir=project_dir, sentences=sentences,
+                            analyzed_only=True)
+
+    # --- 여기부터 쓰기 — 캡컷 완전 종료 필수 ---
+    if running_check():
+        raise installer.CapCutRunningError(
+            "CapCut이 실행 중입니다. 편집할 프로젝트가 캡컷에 열려 있으면 "
+            "수정이 유실됩니다 — 캡컷을 완전히 닫고 다시 실행해 주세요.")
 
     # 자막 프로토가 없으면(막 올린 프로젝트) 다른 프로젝트에서 스타일 차용
     if "subtitle" not in protos:
@@ -432,13 +640,8 @@ def run_modify(
                 "자막 스타일을 가져올 프로젝트가 없습니다. CapCut에서 자막이 "
                 "있는 프로젝트를 하나 만들어 두면 그 스타일을 따라갑니다.")
 
-    _log(progress, f"음성인식(STT) 중: {os.path.basename(src_path)} … "
-                   "(최초 실행은 모델 다운로드로 오래 걸릴 수 있음)")
-    cues, words = transcribe_words_fn(src_path, "v1", language=language)
-    _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
-
-    segments, final_caps, titles = _compute_edit(
-        words, cues, script_row, src_path, progress)
+    segments, final_caps, titles, warns = _compute_edit(
+        words, cues, script_row, src_path, progress, options)
 
     # 캔버스·길이는 프로젝트의 실측값을 그대로 쓴다 (ffprobe 불필요)
     cc = draft.get("canvas_config") or {}
@@ -457,7 +660,13 @@ def run_modify(
                                           backup_dir=backup_dir)
     _log(progress, f"완료! 백업: {bdir}")
     _log(progress, "CapCut을 열어 프로젝트를 확인하세요 (등록 과정 없음 — 안전).")
-    return project_dir
+
+    summary = [{"role": s.role, "src_start": s.src_start,
+                "src_end": s.src_end, "duration": s.duration,
+                "text": _range_text(words, s.src_start, s.src_end)}
+               for s in segments]
+    return ModifyResult(project_dir=project_dir, backup_dir=bdir,
+                        segments=summary, warnings=warns)
 
 
 def default_projects_root() -> Optional[str]:

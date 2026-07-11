@@ -116,6 +116,38 @@ class TestRunModify:
                                 running_check=lambda: True,
                                 require_media=False)
 
+    def test_analyze_only_returns_sentences_and_caches(self, root):
+        pdir = make_project(root, "어깨필러")
+        res, _logs = run(pdir, analyze_only=True)
+        assert res.analyzed_only
+        assert res.sentences and "start" in res.sentences[0]
+        # 캐시 생성 → 재실행 시 STT 생략
+        assert os.path.isfile(os.path.join(pdir, pipeline.TRANSCRIPT_CACHE))
+        calls = []
+
+        def counting(path, source_id, language=None):
+            calls.append(1)
+            return fake_transcribe_words(path, source_id, language)
+
+        logs = []
+        pipeline.run_modify(pdir, ROW, progress=logs.append,
+                            transcribe_words_fn=counting,
+                            running_check=lambda: False, require_media=False)
+        assert not calls  # 캐시 재사용 — STT 미호출
+        assert any("캐시" in m for m in logs)
+
+    def test_result_summary_and_restore(self, root):
+        pdir = make_project(root, "어깨필러")
+        original = open(os.path.join(pdir, "draft_content.json"),
+                        encoding="utf-8").read()
+        res, _ = run(pdir)
+        assert res.backup_dir and res.segments
+        assert {"role", "src_start", "src_end", "duration", "text"} <= set(
+            res.segments[0].keys())
+        installer.restore_backup(res.project_dir, res.backup_dir)
+        assert open(os.path.join(pdir, "draft_content.json"),
+                    encoding="utf-8").read() == original
+
     def test_silence_trim_active(self, root):
         """0.2초 이상 무음 컷이 수정 모드에도 적용된다."""
         def gappy_transcribe(path, source_id, language=None):

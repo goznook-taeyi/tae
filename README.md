@@ -29,8 +29,12 @@ python main.py        (또는 run_editor.bat)
 ### 사용 순서
 
 1. **캡컷을 완전히 종료**한다 (등록 안전 규칙).
-2. ① 촬영본 영상 1개 추가 → ② 기획안 열기(키티조정기 `_batch_*.json` / `_plan.json`
-   / CSV 백업) → 편집할 **행(숏폼)** 선택 → ③ 프로젝트 이름 확인.
+2. ① 촬영본 영상 추가 — 로컬 파일 또는 **드라이브 링크 붙여넣기**(실행 시 자동
+   다운로드, `내 비디오\숏폼자동편집`에 저장) → ② 기획안 — **구글시트 링크
+   붙여넣기**(키티가 주는 링크 그대로) 또는 로컬 JSON/CSV → 편집할 **행(숏폼)**
+   선택 → ③ 프로젝트 이름 확인.
+   - 링크는 드라이브에서 **"링크가 있는 모든 사용자"** 공유여야 읽힌다.
+     비공개면 안내가 뜨며, 직접 내려받아 로컬 파일로 선택하면 된다.
 3. 템플릿 프로젝트는 기본 "(자동 — 최근 프로젝트)". 자막 스타일을 물려받고 싶은
    실제 프로젝트를 직접 골라도 된다.
 4. **[편집 실행 ▶]** → STT(최초엔 모델 다운로드) → 대본 정렬 → draft 생성·등록.
@@ -103,6 +107,7 @@ python -m pytest        # 82 passed — STT/FFmpeg/CapCut 없이 순수 로직 �
 |---|---|
 | `shortform_editor/align.py` | **대본-전사 정렬** (비트별 발화 구간 탐지, 최종 테이크 선택) |
 | `shortform_editor/autocut.py` | **전사 기반 자동컷** (정렬 폴백 — 무음·반복 테이크 제거, 힌트 배치) |
+| `shortform_editor/gdrive.py` | 드라이브 링크 처리 — 시트 CSV 읽기·영상 다운로드 (링크 공유 기반, 무인증) |
 | `shortform_editor/adapters/kitty_solting.py` | 키티조정기 시트(JSON/CSV) 파서 + 레거시 컷 리스트 |
 | `shortform_editor/captions.py` | STT(faster-whisper, 단어 타임스탬프) 래퍼, 자막 cue 분할 |
 | `shortform_editor/editplan.py` | 편집 계약(EditPlan) 모델·검증·폴백 기획기 |

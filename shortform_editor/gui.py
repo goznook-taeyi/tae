@@ -15,8 +15,33 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import ffmpeg_utils, installer, pipeline
+from . import ffmpeg_utils, gdrive, installer, pipeline
 from .adapters import kitty_solting
+
+
+def _placeholder(entry: ttk.Entry, var: tk.StringVar, text: str) -> None:
+    """엔트리에 회색 안내문을 넣는다. 값을 읽을 땐 _entry_value()를 쓸 것."""
+    entry._ph_text = text  # type: ignore[attr-defined]
+    var.set(text)
+    entry.configure(foreground="#999")
+
+    def on_in(_e):
+        if var.get() == text:
+            var.set("")
+            entry.configure(foreground="black")
+
+    def on_out(_e):
+        if not var.get().strip():
+            var.set(text)
+            entry.configure(foreground="#999")
+
+    entry.bind("<FocusIn>", on_in)
+    entry.bind("<FocusOut>", on_out)
+
+
+def _entry_value(entry: ttk.Entry, var: tk.StringVar) -> str:
+    v = var.get().strip()
+    return "" if v == getattr(entry, "_ph_text", None) else v
 
 
 class App(ttk.Frame):
@@ -44,13 +69,21 @@ class App(ttk.Frame):
         self.columnconfigure(1, weight=1)
         row = 0
 
-        ttk.Label(self, text="1. 입력 영상 (긴 영상 1개 또는 여러 클립)").grid(
+        ttk.Label(self, text="1. 입력 영상 (로컬 파일 또는 드라이브 링크)").grid(
             row=row, column=0, columnspan=3, sticky="w")
         row += 1
         self.files_var = tk.StringVar(value="아직 선택 안 됨")
         ttk.Label(self, textvariable=self.files_var, foreground="#555").grid(
             row=row, column=0, columnspan=2, sticky="w")
-        ttk.Button(self, text="영상 추가…", command=self._add_files).grid(
+        ttk.Button(self, text="영상 파일…", command=self._add_files).grid(
+            row=row, column=2, sticky="e")
+        row += 1
+        self.video_link_var = tk.StringVar()
+        self.video_link_entry = ttk.Entry(self, textvariable=self.video_link_var)
+        self.video_link_entry.grid(row=row, column=0, columnspan=2, sticky="ew")
+        _placeholder(self.video_link_entry, self.video_link_var,
+                     "드라이브 영상 링크 붙여넣기 (https://drive.google.com/…)")
+        ttk.Button(self, text="링크 추가", command=self._add_drive_link).grid(
             row=row, column=2, sticky="e")
         row += 1
 
@@ -58,14 +91,23 @@ class App(ttk.Frame):
                                  sticky="ew", pady=8)
         row += 1
 
-        ttk.Label(self, text="2. 기획안 (키티조정기 시트 JSON/CSV — 없으면 자동 기획)").grid(
+        ttk.Label(self, text="2. 기획안 (구글시트 링크 또는 JSON/CSV 파일 — 없으면 자동 기획)").grid(
             row=row, column=0, columnspan=3, sticky="w")
         row += 1
         self.plan_var = tk.StringVar(value="기획안 없음 (자동 기획)")
         ttk.Label(self, textvariable=self.plan_var, foreground="#555").grid(
             row=row, column=0, columnspan=2, sticky="w")
-        ttk.Button(self, text="기획안 열기…", command=self._pick_plan).grid(
+        ttk.Button(self, text="기획안 파일…", command=self._pick_plan).grid(
             row=row, column=2, sticky="e")
+        row += 1
+        self.plan_link_var = tk.StringVar()
+        self.plan_link_entry = ttk.Entry(self, textvariable=self.plan_link_var)
+        self.plan_link_entry.grid(row=row, column=0, columnspan=2, sticky="ew")
+        _placeholder(self.plan_link_entry, self.plan_link_var,
+                     "기획안 시트 링크 붙여넣기 (https://docs.google.com/spreadsheets/…)")
+        self.plan_link_btn = ttk.Button(self, text="링크에서 불러오기",
+                                        command=self._load_plan_link)
+        self.plan_link_btn.grid(row=row, column=2, sticky="e")
         row += 1
         ttk.Label(self, text="기획안 행(숏폼)").grid(row=row, column=0, sticky="w")
         self.row_var = tk.StringVar()
@@ -140,9 +182,75 @@ class App(ttk.Frame):
             filetypes=[("영상", "*.mp4 *.mov *.mkv *.avi *.webm"), ("모두", "*.*")])
         if paths:
             self._inputs = list(paths)
-            self.files_var.set(f"{len(self._inputs)}개 선택: "
-                               + ", ".join(os.path.basename(p) for p in self._inputs[:3])
-                               + (" …" if len(self._inputs) > 3 else ""))
+            self._show_inputs()
+
+    def _add_drive_link(self) -> None:
+        url = _entry_value(self.video_link_entry, self.video_link_var)
+        if not url:
+            return
+        if not gdrive.is_google_url(url) or not gdrive.file_id_from_url(url):
+            messagebox.showwarning(
+                "링크 확인",
+                "드라이브 파일 링크가 아닙니다.\n"
+                "예: https://drive.google.com/file/d/<파일ID>/view")
+            return
+        self._inputs.append(url)
+        self.video_link_var.set("")
+        self._show_inputs()
+        self._log_msg("드라이브 영상 링크 추가됨 (실행 시 자동 다운로드)")
+
+    def _show_inputs(self) -> None:
+        def label(p: str) -> str:
+            return "드라이브 링크" if gdrive.is_google_url(p) else os.path.basename(p)
+        if not self._inputs:
+            self.files_var.set("아직 선택 안 됨")
+            return
+        self.files_var.set(f"{len(self._inputs)}개 선택: "
+                           + ", ".join(label(p) for p in self._inputs[:3])
+                           + (" …" if len(self._inputs) > 3 else ""))
+
+    def _load_plan_link(self) -> None:
+        url = _entry_value(self.plan_link_entry, self.plan_link_var)
+        if not url:
+            return
+        if not gdrive.sheet_id_from_url(url):
+            messagebox.showwarning(
+                "링크 확인",
+                "구글시트 링크가 아닙니다.\n"
+                "예: https://docs.google.com/spreadsheets/d/<시트ID>/edit")
+            return
+        self.plan_link_btn.configure(state="disabled")
+        self._log_msg("기획안 시트 불러오는 중…")
+
+        def fetch():
+            try:
+                csv_text = gdrive.fetch_sheet_csv(url)
+                rows = kitty_solting.parse_script_csv(csv_text, title="드라이브 시트")
+                self.after(0, lambda: self._apply_plan_rows(rows, "드라이브 시트"))
+            except Exception as e:  # noqa: BLE001
+                msg = str(e)
+                self.after(0, lambda: self._plan_link_failed(msg))
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _apply_plan_rows(self, rows, label: str) -> None:
+        self.plan_link_btn.configure(state="normal")
+        if not rows:
+            messagebox.showwarning("기획안 없음",
+                                   "시트에서 기획안 행을 찾지 못했습니다.")
+            return
+        self._script_rows = rows
+        self._plan_path = None
+        self.plan_var.set(f"{label} (대본 시트 · {len(rows)}행)")
+        self.row_combo.configure(state="readonly",
+                                 values=[r.summary() for r in rows])
+        self.row_combo.current(0)
+        self._log_msg(f"기획안 로드: 숏폼 {len(rows)}개 행 — 편집할 행을 선택하세요.")
+
+    def _plan_link_failed(self, msg: str) -> None:
+        self.plan_link_btn.configure(state="normal")
+        self._log_msg(f"❌ 기획안 불러오기 실패: {msg}")
+        messagebox.showerror("기획안 불러오기 실패", msg)
 
     def _pick_plan(self) -> None:
         path = filedialog.askopenfilename(
@@ -220,7 +328,7 @@ class App(ttk.Frame):
             self._log_msg("⚠ FFmpeg/ffprobe를 찾지 못했습니다. 설치 후 다시 실행하세요.")
 
     def _run(self) -> None:
-        if not self._inputs and not self._plan_path:
+        if not self._inputs and not self._plan_path and not self._script_rows:
             messagebox.showwarning("입력 필요", "영상 또는 기획안을 선택하세요.")
             return
         if not self.root_var.get().strip():
@@ -245,10 +353,20 @@ class App(ttk.Frame):
         try:
             name = self.name_var.get().strip() or "shortform_auto"
             root = self.root_var.get().strip()
+            # 드라이브 링크는 실행 시점에 내려받아 로컬 경로로 바꾼다
+            inputs: list[str] = []
+            for item in self._inputs:
+                if gdrive.is_google_url(item):
+                    self._log_msg("드라이브에서 영상 다운로드 중…")
+                    inputs.append(gdrive.download_file(
+                        item, gdrive.default_download_dir(),
+                        progress=self._log_msg))
+                else:
+                    inputs.append(item)
             if self._script_rows:
                 row_idx = max(self.row_combo.current(), 0)
                 out = pipeline.run_scripted(
-                    self._inputs[0],
+                    inputs[0],
                     self._script_rows[row_idx],
                     project_name=name,
                     projects_root=root,
@@ -260,7 +378,7 @@ class App(ttk.Frame):
                 )
             else:
                 out = pipeline.run(
-                    inputs=self._inputs or None,
+                    inputs=inputs or None,
                     plan=self._plan_path,
                     project_name=name,
                     projects_root=root,

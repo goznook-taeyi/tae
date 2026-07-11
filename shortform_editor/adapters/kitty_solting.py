@@ -55,7 +55,7 @@ class ScriptRow:
     title: str = ""  # 시트 제목 (예: "르디테_2026-06-29_여름트렌드10")
 
     def summary(self) -> str:
-        q = self.top_question.strip()
+        q = " ".join(self.top_question.split())  # 셀 안 줄바꿈 정리
         return f"{self.no}. {q[:40]}{'…' if len(q) > 40 else ''}"
 
 

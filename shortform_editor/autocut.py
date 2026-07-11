@@ -151,6 +151,63 @@ def plan_blocks(
     return out
 
 
+# --- 무음 정밀 트리밍 (사용자 규칙: 0.2초 이상 무음은 전부 컷) ---
+MAX_SILENCE = 0.2      # 이보다 긴 단어 사이 공백은 잘라낸다
+SPAN_PAD_PRE = 0.06    # 발화 조각 앞 여유
+SPAN_PAD_POST = 0.10   # 발화 조각 뒤 여유 (합쳐도 MAX_SILENCE 안쪽)
+MIN_SPAN = 0.35        # 이보다 짧은 조각은 이웃과 합쳐 프레임 조각화 방지
+
+
+def trim_silence(words: list[dict], start: float, end: float,
+                 max_silence: float = MAX_SILENCE,
+                 pad_pre: float = SPAN_PAD_PRE,
+                 pad_post: float = SPAN_PAD_POST,
+                 min_span: float = MIN_SPAN) -> list[tuple[float, float]]:
+    """컷 구간 [start, end] 안에서 max_silence 이상의 무음을 전부 제거한다.
+
+    반환: 잘라 쓸 (start, end) 조각 목록 (시간순, 서로 겹치지 않음).
+    구간 안에 단어가 없으면 원래 구간을 그대로 돌려준다.
+    """
+    ws = [w for w in words
+          if float(w["end"]) > start and float(w["start"]) < end
+          and normalize(w.get("text", ""))]
+    if not ws:
+        return [(start, end)]
+
+    spans: list[list[float]] = []
+    cs, ce = float(ws[0]["start"]), float(ws[0]["end"])
+    for w in ws[1:]:
+        if float(w["start"]) - ce > max_silence:
+            spans.append([cs, ce])
+            cs = float(w["start"])
+        ce = max(ce, float(w["end"]))
+    spans.append([cs, ce])
+
+    # 너무 짧은 조각은 이웃과 합친다 (내용은 버리지 않는다)
+    merged: list[list[float]] = []
+    for i, s in enumerate(spans):
+        if merged and (s[1] - s[0]) < min_span:
+            merged[-1][1] = s[1]          # 앞 조각에 붙임(사이 무음 포함)
+        elif not merged and (s[1] - s[0]) < min_span and i + 1 < len(spans):
+            spans[i + 1][0] = s[0]        # 첫 조각이 짧으면 다음에 붙임
+        else:
+            merged.append(s)
+    if not merged:
+        merged = spans[-1:]
+
+    out: list[tuple[float, float]] = []
+    for i, (s, e) in enumerate(merged):
+        ps = max(start, s - pad_pre)
+        if out:
+            ps = max(ps, out[-1][1])
+        pe = min(end, e + pad_post)
+        if i + 1 < len(merged):
+            pe = min(pe, merged[i + 1][0])
+        if pe > ps:
+            out.append((ps, pe))
+    return out or [(start, end)]
+
+
 def pad_blocks(blocks: list[SpeechBlock], pad_pre: float = PAD_PRE,
                pad_post: float = PAD_POST) -> list[SpeechBlock]:
     """블록마다 브레스 여유를 붙이되, 이웃 블록(무음 구간) 안에서만 확장한다."""

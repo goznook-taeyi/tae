@@ -168,6 +168,69 @@ def write_project_files(
     return meta
 
 
+def update_project_files(
+    draft: dict,
+    project_dir: str,
+    backup_dir: Optional[str] = None,
+    now_us: Optional[int] = None,
+) -> str:
+    """**기존** 프로젝트의 내용을 교체한다 (하이브리드 모드의 쓰기 경로).
+
+    root_meta_info.json은 절대 건드리지 않는다 — 프로젝트는 이미 캡컷이
+    등록해 뒀기 때문. 수정 파일(콘텐츠+미러+meta)만 백업 후 원자적으로 교체.
+    반환: 백업 폴더 경로.
+    """
+    now_us = now_us or _now_us()
+    content_path = os.path.join(project_dir, "draft_content.json")
+    if not os.path.isfile(content_path):
+        raise FileNotFoundError(f"프로젝트가 아닙니다: {project_dir}")
+
+    # 수정 대상 파일만 백업
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    backup_dir = backup_dir or os.path.join(
+        os.path.dirname(project_dir), "_backups")
+    bdir = os.path.join(backup_dir,
+                        f"{os.path.basename(project_dir)}_{stamp}")
+    os.makedirs(bdir, exist_ok=True)
+    for fn in ("draft_content.json",) + MIRROR_FILES + ("draft_meta_info.json",):
+        src = os.path.join(project_dir, fn)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(bdir, fn))
+
+    _dump_json(draft, content_path)
+    for mirror in MIRROR_FILES:  # 미러 동기화 (낡으면 프로젝트가 안 열림)
+        shutil.copyfile(content_path, os.path.join(project_dir, mirror))
+
+    meta_path = os.path.join(project_dir, "draft_meta_info.json")
+    if os.path.isfile(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["tm_draft_modified"] = now_us  # 캡컷 규격: 마이크로초
+        meta["tm_duration"] = int(draft.get("duration", 0))
+        _dump_json(meta, meta_path)
+    return bdir
+
+
+def list_projects(projects_root: str) -> list[tuple[str, str]]:
+    """(표시명, 폴더 경로) 목록 — 수정시각 최신순. GUI 프로젝트 선택용."""
+    out = []
+    for d in find_template_projects(projects_root):
+        name = os.path.basename(d)
+        dur = ""
+        meta_path = os.path.join(d, "draft_meta_info.json")
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+            us = int(meta.get("tm_duration", 0))
+            if us > 0:
+                sec = us / 1_000_000
+                dur = f"   ·   {int(sec // 60)}:{int(sec % 60):02d}"
+        except (OSError, ValueError):
+            pass
+        out.append((f"{name}{dur}", d))
+    return out
+
+
 def register_draft(
     projects_root: str,
     project_dir: str,

@@ -158,6 +158,118 @@ def run(
     return out_dir
 
 
+def _compute_edit(
+    words: list,
+    cues: list,
+    script_row: Optional[ScriptRow],
+    video_path: str,
+    progress: Optional[Callable[[str], None]] = None,
+):
+    """전사 + (선택)기획안 → (segments, 자막, 타이틀). 컷 계산의 공용 코어.
+
+    마지막에 모든 컷 구간 안의 0.2초 이상 무음을 정밀 트리밍한다.
+    """
+    # --- 1차: 대본-전사 정렬 (기획안이 있고 대본대로 말한 경우) ---
+    if script_row is not None:
+        units = kitty_solting.script_units(script_row)
+        _log(progress, f"대본 {len(units)}개 비트를 전사와 정렬 중…")
+        result = align_mod.align_script(words, units)
+        matched_ratio = len(result.clips) / max(len(units), 1)
+    else:
+        units, result = [], align_mod.AlignResult()
+        matched_ratio = 0.0
+        _log(progress, "기획안 없음 — 전사 기반 자동컷으로 편집합니다.")
+
+    grouped: dict[str, list[PlanClip]] = {}
+    if units and matched_ratio >= 0.5:
+        for w in result.warnings:
+            _log(progress, f"⚠ {w}")
+        _log(progress, f"정렬 성공 {len(result.clips)}/{len(units)} 비트 "
+                       f"(평균 유사도 "
+                       f"{sum(c.score for c in result.clips)/len(result.clips):.2f})")
+        for clip in result.clips:
+            grouped.setdefault(clip.unit.role, []).append(
+                PlanClip(source_id="v1", start=clip.start, end=clip.end))
+    else:
+        # --- 2차(폴백): 전사 기반 자동컷 (기획안 없음 또는 즉흥 발화) ---
+        if units:
+            _log(progress,
+                 f"대본과 발화 일치율이 낮습니다({len(result.clips)}/{len(units)} 비트) — "
+                 "전사 기반 자동컷으로 전환합니다 (무음·반복 테이크 제거).")
+        blocks = autocut_mod.blocks_from_words(words)
+        n_raw = len(blocks)
+        blocks = autocut_mod.dedupe_takes(blocks)
+        if n_raw > len(blocks):
+            _log(progress, f"반복 테이크 {n_raw - len(blocks)}개 블록 제거 "
+                           f"(마지막 테이크 유지)")
+        if not blocks:
+            raise ValueError("발화 구간을 찾지 못했습니다. 영상에 음성이 있는지, "
+                             "STT 언어 설정이 맞는지 확인하세요.")
+        autocut_mod.pad_blocks(blocks)
+        roles = autocut_mod.plan_blocks(
+            blocks,
+            hook_hint=(script_row.hook or script_row.top_question)
+            if script_row else "",
+            cta_hint=script_row.cta if script_row else "")
+        for role, blks in roles.items():
+            grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end)
+                             for b in blks]
+        _log(progress, "자동컷 배치: " + ", ".join(
+            f"{r} {len(bs)}컷" for r, bs in roles.items()))
+
+    if not grouped:
+        raise ValueError(
+            "편집할 구간을 하나도 찾지 못했습니다. "
+            "영상과 기획안 행이 맞는지 확인하세요.")
+
+    # --- 무음 정밀 트리밍: 컷 구간 안의 0.2초 이상 무음을 전부 제거 ---
+    n_before = sum(len(cs) for cs in grouped.values())
+    for role in list(grouped):
+        trimmed: list[PlanClip] = []
+        for c in grouped[role]:
+            for s, e in autocut_mod.trim_silence(words, c.start, c.end):
+                trimmed.append(PlanClip(source_id=c.source_id, start=s, end=e))
+        grouped[role] = trimmed
+    n_after = sum(len(cs) for cs in grouped.values())
+    if n_after > n_before:
+        _log(progress, f"무음 정밀 컷: {autocut_mod.MAX_SILENCE}초 이상 무음 제거 "
+                       f"({n_before}→{n_after}컷)")
+
+    # --- EditPlan 구성 (역할 순서 유지) ---
+    src = SourceClip(id="v1", path=video_path)
+    sections = [Section(role=r, clips=grouped[r])
+                for r in ("hook", "retention", "main", "cta") if r in grouped]
+    ep = EditPlan(sources=[src], sections=sections, captions="auto")
+
+    segments = timeline.build_segments(ep)
+    final_caps = timeline.remap_captions(cues, segments)
+
+    # 후킹 구간에는 대사 자막을 넣지 않는다 (편집 문법 §3-3)
+    hook_ranges = [(s.target_start, s.target_end)
+                   for s in segments if s.role == "hook"]
+
+    def _in_hook(cap: dict) -> bool:
+        mid = (cap["start"] + cap["end"]) / 2
+        return any(a <= mid < b for a, b in hook_ranges)
+
+    final_caps = [c for c in final_caps if not _in_hook(c)]
+
+    # 상단질문 타이틀 오버레이 (후킹 구간, 없으면 첫 3초)
+    titles: list[dict] = []
+    tq = (script_row.top_question or "").strip() if script_row else ""
+    if tq:
+        if hook_ranges:
+            t_start, t_end = hook_ranges[0][0], hook_ranges[-1][1]
+        else:
+            t_start, t_end = 0.0, min(3.0, timeline.total_duration(segments))
+        if t_end > t_start:
+            titles.append({"start": t_start, "end": t_end, "text": tq})
+
+    _log(progress, f"세그먼트 {len(segments)}개, 자막 {len(final_caps)}개, "
+                   f"타이틀 {len(titles)}개 — 총 {timeline.total_duration(segments):.1f}초")
+    return segments, final_caps, titles
+
+
 def run_scripted(
     video_path: str,
     script_row: Optional[ScriptRow] = None,
@@ -226,91 +338,8 @@ def run_scripted(
     cues, words = transcribe_words_fn(video_path, "v1", language=language)
     _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
 
-    # --- 1차: 대본-전사 정렬 (기획안이 있고 대본대로 말한 경우) ---
-    if script_row is not None:
-        units = kitty_solting.script_units(script_row)
-        _log(progress, f"대본 {len(units)}개 비트를 전사와 정렬 중…")
-        result = align_mod.align_script(words, units)
-        matched_ratio = len(result.clips) / max(len(units), 1)
-    else:
-        units, result = [], align_mod.AlignResult()
-        matched_ratio = 0.0
-        _log(progress, "기획안 없음 — 전사 기반 자동컷으로 편집합니다.")
-
-    grouped: dict[str, list[PlanClip]] = {}
-    if units and matched_ratio >= 0.5:
-        for w in result.warnings:
-            _log(progress, f"⚠ {w}")
-        _log(progress, f"정렬 성공 {len(result.clips)}/{len(units)} 비트 "
-                       f"(평균 유사도 "
-                       f"{sum(c.score for c in result.clips)/len(result.clips):.2f})")
-        for clip in result.clips:
-            grouped.setdefault(clip.unit.role, []).append(
-                PlanClip(source_id="v1", start=clip.start, end=clip.end))
-    else:
-        # --- 2차(폴백): 전사 기반 자동컷 (기획안 없음 또는 즉흥 발화) ---
-        if units:
-            _log(progress,
-                 f"대본과 발화 일치율이 낮습니다({len(result.clips)}/{len(units)} 비트) — "
-                 "전사 기반 자동컷으로 전환합니다 (무음·반복 테이크 제거).")
-        blocks = autocut_mod.blocks_from_words(words)
-        n_raw = len(blocks)
-        blocks = autocut_mod.dedupe_takes(blocks)
-        if n_raw > len(blocks):
-            _log(progress, f"반복 테이크 {n_raw - len(blocks)}개 블록 제거 "
-                           f"(마지막 테이크 유지)")
-        if not blocks:
-            raise ValueError("발화 구간을 찾지 못했습니다. 영상에 음성이 있는지, "
-                             "STT 언어 설정이 맞는지 확인하세요.")
-        autocut_mod.pad_blocks(blocks)
-        roles = autocut_mod.plan_blocks(
-            blocks,
-            hook_hint=(script_row.hook or script_row.top_question)
-            if script_row else "",
-            cta_hint=script_row.cta if script_row else "")
-        for role, blks in roles.items():
-            grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end)
-                             for b in blks]
-        _log(progress, "자동컷 배치: " + ", ".join(
-            f"{r} {len(bs)}컷" for r, bs in roles.items()))
-
-    if not grouped:
-        raise ValueError(
-            "편집할 구간을 하나도 찾지 못했습니다. "
-            "영상과 기획안 행이 맞는지 확인하세요.")
-
-    # --- EditPlan 구성 (역할 순서 유지) ---
-    src = SourceClip(id="v1", path=video_path)
-    sections = [Section(role=r, clips=grouped[r])
-                for r in ("hook", "retention", "main", "cta") if r in grouped]
-    ep = EditPlan(sources=[src], sections=sections, captions="auto")
-
-    segments = timeline.build_segments(ep)
-    final_caps = timeline.remap_captions(cues, segments)
-
-    # 후킹 구간에는 대사 자막을 넣지 않는다 (편집 문법 §3-3)
-    hook_ranges = [(s.target_start, s.target_end)
-                   for s in segments if s.role == "hook"]
-
-    def _in_hook(cap: dict) -> bool:
-        mid = (cap["start"] + cap["end"]) / 2
-        return any(a <= mid < b for a, b in hook_ranges)
-
-    final_caps = [c for c in final_caps if not _in_hook(c)]
-
-    # 상단질문 타이틀 오버레이 (후킹 구간, 없으면 첫 3초)
-    titles = []
-    tq = (script_row.top_question or "").strip()
-    if tq:
-        if hook_ranges:
-            t_start, t_end = hook_ranges[0][0], hook_ranges[-1][1]
-        else:
-            t_start, t_end = 0.0, min(3.0, timeline.total_duration(segments))
-        if t_end > t_start:
-            titles.append({"start": t_start, "end": t_end, "text": tq})
-
-    _log(progress, f"세그먼트 {len(segments)}개, 자막 {len(final_caps)}개, "
-                   f"타이틀 {len(titles)}개 — 총 {timeline.total_duration(segments):.1f}초")
+    segments, final_caps, titles = _compute_edit(
+        words, cues, script_row, video_path, progress)
 
     # --- 캔버스 (입력 비율 그대로) ---
     try:
@@ -338,6 +367,97 @@ def run_scripted(
     if install:
         _log(progress, "root_meta_info.json에 등록됨 — CapCut을 열면 목록에 보입니다.")
     return out_dir
+
+
+def run_modify(
+    project_dir: str,
+    script_row: Optional[ScriptRow] = None,
+    *,
+    language: Optional[str] = "ko",
+    backup_dir: Optional[str] = None,
+    progress: Optional[Callable[[str], None]] = None,
+    transcribe_words_fn: Callable[..., tuple] = captions_mod.transcribe_words,
+    running_check: Callable[[], bool] = installer.capcut_running,
+    require_media: bool = True,
+) -> str:
+    """하이브리드 모드(권장): **캡컷이 만든 기존 프로젝트**를 자동 가편집한다.
+
+    프로젝트 생성·등록은 캡컷이 이미 했으므로(가장 위험했던 단계 삭제),
+    이 함수는 프로젝트 '내용'만 바꾼다 — 검증된 수정 경로:
+    ① 영상 경로를 프로젝트에서 읽어 STT ② 컷 계산(+0.2초 무음 정밀 컷)
+    ③ 프로젝트 자신을 프로토타입 삼아 트랙 재구성(자막 프로토가 없으면
+    다른 프로젝트에서 차용) ④ 백업 후 콘텐츠+미러+meta만 교체.
+    root_meta_info.json은 건드리지 않는다.
+    """
+    if running_check():
+        raise installer.CapCutRunningError(
+            "CapCut이 실행 중입니다. 편집할 프로젝트가 캡컷에 열려 있으면 "
+            "수정이 유실됩니다 — 캡컷을 완전히 닫고 다시 실행해 주세요.")
+
+    name = os.path.basename(project_dir)
+    draft = installer.load_template(project_dir)
+    protos = capcut_draft.harvest_prototypes(draft, require_text=False)
+    if not protos:
+        raise ValueError(
+            f"'{name}' 프로젝트에 영상이 없습니다. 캡컷에서 영상을 올려 "
+            "저장한 프로젝트를 선택하세요.")
+
+    videos = draft.get("materials", {}).get("videos", [])
+    src_path = next((m.get("path") for m in videos if m.get("path")), None)
+    if not src_path:
+        raise ValueError(f"'{name}' 프로젝트에서 영상 경로를 찾지 못했습니다.")
+    if require_media and not os.path.isfile(src_path):
+        raise FileNotFoundError(
+            f"프로젝트가 참조하는 영상 파일이 없습니다: {src_path}\n"
+            "SD카드/외장 드라이브가 분리되지 않았는지 확인하세요.")
+
+    # 자막 프로토가 없으면(막 올린 프로젝트) 다른 프로젝트에서 스타일 차용
+    if "subtitle" not in protos:
+        donor_root = os.path.dirname(project_dir)
+        for cand in installer.find_template_projects(donor_root):
+            if os.path.normpath(cand) == os.path.normpath(project_dir):
+                continue
+            try:
+                donor = capcut_draft.harvest_prototypes(
+                    installer.load_template(cand))
+            except (OSError, ValueError):
+                continue
+            if donor:
+                protos["subtitle"] = donor["subtitle"]
+                protos["title"] = donor["title"]
+                _log(progress, f"자막 스타일 차용: {os.path.basename(cand)}")
+                break
+        if "subtitle" not in protos:
+            raise ValueError(
+                "자막 스타일을 가져올 프로젝트가 없습니다. CapCut에서 자막이 "
+                "있는 프로젝트를 하나 만들어 두면 그 스타일을 따라갑니다.")
+
+    _log(progress, f"음성인식(STT) 중: {os.path.basename(src_path)} … "
+                   "(최초 실행은 모델 다운로드로 오래 걸릴 수 있음)")
+    cues, words = transcribe_words_fn(src_path, "v1", language=language)
+    _log(progress, f"전사 완료 — 자막 cue {len(cues)}개, 단어 {len(words)}개")
+
+    segments, final_caps, titles = _compute_edit(
+        words, cues, script_row, src_path, progress)
+
+    # 캔버스·길이는 프로젝트의 실측값을 그대로 쓴다 (ffprobe 불필요)
+    cc = draft.get("canvas_config") or {}
+    canvas = (int(cc.get("width") or 1080), int(cc.get("height") or 1920))
+    dur_us = max((int(m.get("duration") or 0) for m in videos), default=0)
+    durations = {"v1": dur_us / 1_000_000} if dur_us else None
+
+    _log(progress, "프로젝트 내용 재구성 중…")
+    new_draft = capcut_draft.build_draft(
+        segments, final_caps, name=draft.get("name") or name, canvas=canvas,
+        source_durations=durations, template=draft, titles=titles,
+        protos=protos)
+    new_draft["id"] = draft.get("id", new_draft["id"])  # 프로젝트 정체성 유지
+
+    bdir = installer.update_project_files(new_draft, project_dir,
+                                          backup_dir=backup_dir)
+    _log(progress, f"완료! 백업: {bdir}")
+    _log(progress, "CapCut을 열어 프로젝트를 확인하세요 (등록 과정 없음 — 안전).")
+    return project_dir
 
 
 def default_projects_root() -> Optional[str]:

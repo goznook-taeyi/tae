@@ -179,12 +179,16 @@ def _proto_entry(template: dict, seg: dict):
     return {"segment": seg, "material": mat, "extras": extras}
 
 
-def harvest_prototypes(template: Optional[dict]) -> Optional[dict]:
+def harvest_prototypes(template: Optional[dict],
+                       require_text: bool = True) -> Optional[dict]:
     """template(실제 draft dict)에서 비디오/자막/타이틀 프로토타입을 수확한다.
 
-    반환: {"video": entry, "subtitle": entry, "title": entry(옵션)} 또는 None.
+    반환: {"video": entry, "subtitle": entry, "title": entry} 또는 None.
     subtitle = material type이 'subtitle'(자동캡션)인 텍스트,
     title = 그 외 텍스트(인용 타이틀 등). 없으면 subtitle로 대신한다.
+
+    require_text=False면 텍스트 프로토가 없어도 video만으로 반환한다
+    (수정 모드에서 자막 프로토는 다른 프로젝트에서 빌려올 수 있음).
     """
     if not template or not template.get("tracks"):
         return None
@@ -205,10 +209,14 @@ def harvest_prototypes(template: Optional[dict]) -> Optional[dict]:
                 kind = ("subtitle" if entry["material"].get("type") == "subtitle"
                         else "title")
                 protos.setdefault(kind, entry)
-    if "video" not in protos or ("subtitle" not in protos and "title" not in protos):
+    if "video" not in protos:
         return None
-    protos.setdefault("subtitle", protos.get("title"))
-    protos.setdefault("title", protos.get("subtitle"))
+    has_text = "subtitle" in protos or "title" in protos
+    if require_text and not has_text:
+        return None
+    if has_text:
+        protos.setdefault("subtitle", protos.get("title"))
+        protos.setdefault("title", protos.get("subtitle"))
     return protos
 
 
@@ -400,6 +408,7 @@ def build_draft(
     template: Optional[dict] = None,
     id_gen: Optional[Callable[[], str]] = None,
     titles: Optional[list[dict]] = None,
+    protos: Optional[dict] = None,
 ) -> dict:
     """세그먼트/자막 → CapCut draft dict.
 
@@ -411,7 +420,11 @@ def build_draft(
     """
     gen = id_gen or _uuid
     canvas_w, canvas_h = canvas
-    protos = harvest_prototypes(template)
+    if protos is None:
+        protos = harvest_prototypes(template)
+    if protos and (captions or titles) and "subtitle" not in protos:
+        raise ValueError("자막 프로토타입이 없습니다 — 자막이 있는 실제 프로젝트를 "
+                         "템플릿으로 지정하거나 protos에 subtitle을 채워주세요.")
     base = copy.deepcopy(template) if template else _default_base(canvas_w, canvas_h)
     base.setdefault("materials", {})
     materials = base["materials"]

@@ -78,6 +78,44 @@ class TestPlanBlocks:
         assert roles["hook"][0].start == 0.0
 
 
+class TestTrimSilence:
+    def test_cuts_gaps_over_threshold(self):
+        """0.2초 이상 무음은 컷 구간 안에서 전부 잘린다."""
+        words = (_speech("앞부분 발화입니다 조금 길게", 0.0)
+                 + _speech("뒷부분 발화입니다 역시 길게", 5.0))  # 3초 무음
+        spans = autocut.trim_silence(words, 0.0, 10.0)
+        assert len(spans) == 2
+        gap = spans[1][0] - spans[0][1]
+        assert gap >= 2.0  # 무음이 실제로 제거됨(두 조각 사이가 벌어짐)
+
+    def test_keeps_short_gaps(self):
+        words = [{"start": 0.0, "end": 0.5, "text": "네"},
+                 {"start": 0.65, "end": 1.4, "text": "맞아요"},  # 0.15s gap
+                 {"start": 1.5, "end": 2.4, "text": "그렇습니다"}]  # 0.1s gap
+        spans = autocut.trim_silence(words, 0.0, 3.0)
+        assert len(spans) == 1  # 0.2초 미만 공백은 유지
+
+    def test_tiny_fragments_merge_not_drop(self):
+        """짧은 발화 조각은 버리지 않고 이웃과 합친다."""
+        words = ([{"start": 0.0, "end": 0.2, "text": "네"}]      # 0.2초 조각
+                 + _speech("이어지는 본문 발화입니다", 1.0))
+        spans = autocut.trim_silence(words, 0.0, 5.0)
+        assert spans[0][0] <= 0.0 + 0.01  # "네"가 살아있음
+        assert len(spans) == 1
+
+    def test_no_words_returns_original(self):
+        assert autocut.trim_silence([], 1.0, 2.0) == [(1.0, 2.0)]
+
+    def test_spans_do_not_overlap_and_stay_inside(self):
+        words = (_speech("하나 둘 셋 넷 다섯", 0.0)
+                 + _speech("여섯 일곱 여덟 아홉 열", 4.0))
+        spans = autocut.trim_silence(words, 0.5, 5.5)
+        for (s1, e1), (s2, e2) in zip(spans, spans[1:]):
+            assert e1 <= s2
+        assert spans[0][0] >= 0.5
+        assert spans[-1][1] <= 5.5
+
+
 class TestPadBlocks:
     def test_padding_stays_within_silence(self):
         words = (_speech("첫 문장입니다 길게 말합니다", 0.0)

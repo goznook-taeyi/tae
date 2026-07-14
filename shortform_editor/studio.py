@@ -203,7 +203,8 @@ class Studio:
             lbl.bind("<Button-1>", lambda _e, c=cmd: c())
 
         # 카드 2: 포맷·규칙
-        c2 = self._card("2. 포맷 · 편집 규칙")
+        c2 = self._card("2. 포맷 · 편집 규칙",
+                        "참고 프로젝트를 고르면 그 프로젝트의 자막 디자인·강조 스타일을 그대로 가져옵니다")
         grid = tk.Frame(c2, bg=CARD)
         grid.pack(fill="x", pady=(8, 2))
         tk.Label(grid, text="포맷", font=(FONT, 9), bg=CARD, fg=INK).grid(
@@ -228,7 +229,7 @@ class Studio:
                      state="readonly", width=26,
                      values=list(SILENCE_LEVELS)).grid(
             row=2, column=1, sticky="w", padx=(12, 0), pady=3)
-        tk.Label(grid, text="자막 레퍼런스", font=(FONT, 9), bg=CARD,
+        tk.Label(grid, text="참고 프로젝트", font=(FONT, 9), bg=CARD,
                  fg=INK).grid(row=3, column=0, sticky="w", pady=3)
         self.ref_var = tk.StringVar(value=NO_REFERENCE)
         self.ref_combo = ttk.Combobox(grid, textvariable=self.ref_var,

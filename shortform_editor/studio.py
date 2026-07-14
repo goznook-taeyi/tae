@@ -146,11 +146,14 @@ class Studio:
         box.pack(fill="both", expand=True)
         inner = tk.Frame(box, bg=CARD)
         inner.pack(fill="both", expand=True, padx=16, pady=11)
-        tk.Label(inner, text=title, font=(FONT, 11, "bold"), bg=CARD,
-                 fg=INK, anchor="w").pack(fill="x")
+        title_lbl = tk.Label(inner, text=title, font=(FONT, 11, "bold"),
+                             bg=CARD, fg=INK, anchor="w")
+        title_lbl.pack(fill="x")
         if subtitle:
             tk.Label(inner, text=subtitle, font=(FONT, 8), bg=CARD, fg=SUB,
                      anchor="w").pack(fill="x")
+        self._last_card_outer = outer  # 동적 표시/숨김용
+        self._last_card_title = title_lbl
         return inner
 
     def _build(self) -> None:
@@ -364,21 +367,28 @@ class Studio:
                                pady=8, state="disabled")
         self.summary.pack(fill="x", pady=(6, 0))
 
-        # 카드 8: Claude 다듬기 작업 현황
-        c8 = self._card("8. Claude 다듬기 작업 현황")
+        # 카드 8: Claude 다듬기 작업 현황 — 잡이 있을 때만 나타난다
+        c8 = self._card("Claude 다듬기 작업 현황")
+        self.jobs_card = self._last_card_outer
         self.jobs_frame = tk.Frame(c8, bg=CARD)
         self.jobs_frame.pack(fill="x", pady=(6, 0))
-        self.jobs_empty = tk.Label(self.jobs_frame,
-                                   text="요청사항을 쓰고 실행하면 여기에 표시됩니다",
-                                   font=(FONT, 9), bg=CARD, fg=SUB)
-        self.jobs_empty.pack(pady=10)
+        clear = tk.Label(c8, text="완료된 항목 지우기", font=(FONT, 8),
+                         bg=CARD, fg=SUB, cursor="hand2", anchor="e")
+        clear.pack(fill="x", pady=(4, 0))
+        clear.bind("<Button-1>", lambda _e: self._clear_done_jobs())
 
-        # 로그
-        c9 = self._card("로그")
+        # 로그 — 기본 접힘, 오류(❌) 발생 시 자동 펼침
+        c9 = self._card("로그 ▸")
+        self.log_card = self._last_card_outer
+        self.log_toggle = self._last_card_title
+        self.log_toggle.configure(cursor="hand2", fg=SUB, font=(FONT, 9))
+        self.log_toggle.bind("<Button-1>", lambda _e: self._toggle_log())
+        self._log_open = False
         self.log = tk.Text(c9, font=(FONT, 8), wrap="word", height=6,
                            bg=FIELD, fg=SUB, relief="flat", padx=10, pady=6,
                            state="disabled")
-        self.log.pack(fill="x", pady=(6, 0))
+
+        self.jobs_card.pack_forget()  # 잡이 생기면 _spawn_claude가 다시 보여줌
 
     # ---------------------------------------------------------------- 헬퍼
     def _sync_lengths(self) -> None:
@@ -410,10 +420,28 @@ class Studio:
             return
         self._log_q.put(msg)
 
+    def _toggle_log(self) -> None:
+        self._log_open = not self._log_open
+        if self._log_open:
+            self.log_toggle.configure(text="로그 ▾")
+            self.log.pack(fill="x", pady=(6, 0))
+        else:
+            self.log_toggle.configure(text="로그 ▸")
+            self.log.pack_forget()
+
+    def _clear_done_jobs(self) -> None:
+        for j in [j for j in self._jobs if j["done"]]:
+            j["row"].destroy()
+            self._jobs.remove(j)
+        if not self._jobs:
+            self.jobs_card.pack_forget()
+
     def _drain_log(self) -> None:
         try:
             while True:
                 msg = self._log_q.get_nowait()
+                if msg.startswith("❌") and not self._log_open:
+                    self._toggle_log()  # 오류는 자동으로 로그를 펼쳐 보여준다
                 self.log.configure(state="normal")
                 self.log.insert("end", msg + "\n")
                 self.log.see("end")
@@ -785,7 +813,8 @@ class Studio:
             log_file.close()
             self._log_msg(f"❌ Claude 실행 실패: {e}")
             return
-        self.jobs_empty.pack_forget()
+        self.jobs_card.pack(fill="x", padx=20, pady=(0, 10),
+                            before=self.log_card)  # 잡이 생겼으니 카드 표시
         row = tk.Frame(self.jobs_frame, bg=CARD)
         row.pack(fill="x", pady=2)
         dot = tk.Label(row, text="●", font=(FONT, 9), bg=CARD, fg=ORANGE)
@@ -802,7 +831,7 @@ class Studio:
                   lambda _e, p=log_path: subprocess.Popen(["notepad.exe", p]))
         self._jobs.append({"proc": proc, "dot": dot, "stat": stat,
                            "log": log_path, "file": log_file, "done": False,
-                           "dir": project_dir,
+                           "dir": project_dir, "row": row,
                            "started": datetime.datetime.now()})
         self._log_msg("Claude 다듬기를 백그라운드로 시작했습니다 (작업 현황 참고).")
 

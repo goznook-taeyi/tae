@@ -32,6 +32,34 @@ HINT_THRESHOLD = 0.3
 # CTA로 볼 수 있는 단서 단어 (힌트 매칭 실패 시 폴백)
 CTA_KEYWORDS = ("댓글", "팔로우", "구독", "남겨", "dm", "저장")
 
+# 필러(추임새) 단어 — 단독 발화일 때만 컷 (video-use의 필러 컷 규칙 이식)
+FILLER_WORDS = {"음", "어", "엄", "그", "아", "막", "뭐지", "그니까", "약간"}
+# 필러 앞뒤로 이만큼 이상 무음이어야 '단독 발화'로 본다 (문장 속 "그"는 보존)
+FILLER_GAP = 0.15
+
+
+def drop_fillers(words: list[dict], min_gap: float = FILLER_GAP,
+                 removed: list | None = None) -> list[dict]:
+    """단독으로 발화되고 앞뒤 무음(min_gap 이상)에 둘러싸인 필러만 제거한다.
+
+    전사 원문(캐시)은 건드리지 않는다 — 컷 계산에 쓰는 목록에서만 뺀다.
+    removed를 넘기면 제거된 단어 dict가 담긴다(결과 요약 표시용).
+    """
+    out: list[dict] = []
+    for i, w in enumerate(words):
+        txt = normalize(w.get("text") or "")
+        if txt in FILLER_WORDS:
+            gap_before = (float(w["start"]) - float(words[i - 1]["end"])
+                          if i > 0 else min_gap)
+            gap_after = (float(words[i + 1]["start"]) - float(w["end"])
+                         if i + 1 < len(words) else min_gap)
+            if gap_before >= min_gap and gap_after >= min_gap:
+                if removed is not None:
+                    removed.append(w)
+                continue
+        out.append(w)
+    return out
+
 
 @dataclass
 class SpeechBlock:
@@ -82,14 +110,20 @@ def _similar(a: str, b: str) -> float:
 
 def dedupe_takes(blocks: list[SpeechBlock],
                  similarity: float = TAKE_SIMILARITY,
-                 lookahead: int = TAKE_LOOKAHEAD) -> list[SpeechBlock]:
-    """반복 테이크 제거 — 비슷한 블록이 뒤에 다시 나오면 앞의 것(NG)을 버린다."""
+                 lookahead: int = TAKE_LOOKAHEAD,
+                 removed: list | None = None) -> list[SpeechBlock]:
+    """반복 테이크 제거 — 비슷한 블록이 뒤에 다시 나오면 앞의 것(NG)을 버린다.
+
+    removed를 넘기면 버려진 블록이 담긴다(결과 요약 표시용).
+    """
     keep = [True] * len(blocks)
     for i, blk in enumerate(blocks):
         for j in range(i + 1, min(i + 1 + lookahead, len(blocks))):
             if _similar(blk.norm, blocks[j].norm) >= similarity:
                 keep[i] = False  # 뒤 테이크가 최종본
                 break
+    if removed is not None:
+        removed.extend(b for b, k in zip(blocks, keep) if not k)
     return [b for b, k in zip(blocks, keep) if k]
 
 

@@ -51,6 +51,7 @@ class PlanClip:
     source_id: str
     start: float
     end: float
+    reason: str = ""  # 이 컷이 선택된 근거 (결과 요약 표시용)
 
     @property
     def duration(self) -> float:

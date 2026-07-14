@@ -1,6 +1,6 @@
 """EditOptions(포맷·무음 강도·목표 길이·전사 태깅) 반영 테스트 — _compute_edit 순수 검증."""
 
-from shortform_editor import pipeline
+from shortform_editor import autocut, pipeline
 from shortform_editor.adapters.kitty_solting import ScriptRow
 from shortform_editor.pipeline import EditOptions
 
@@ -136,3 +136,48 @@ class TestTargetLength:
             four_part_words(), ROW,
             EditOptions(fmt="short", target_range=(60, 90)))
         assert any("짧습니다" in w for w in warns)
+
+
+class TestFillers:
+    def test_isolated_filler_removed(self):
+        words = [{"start": 0.0, "end": 0.4, "text": "진짜"},
+                 {"start": 0.4, "end": 0.8, "text": "중요해요"},
+                 {"start": 1.2, "end": 1.5, "text": "음"},   # 앞뒤 0.4/0.5초 무음
+                 {"start": 2.0, "end": 2.4, "text": "관리가"},
+                 {"start": 2.4, "end": 2.8, "text": "핵심입니다"}]
+        removed = []
+        out = autocut.drop_fillers(words, removed=removed)
+        assert len(out) == 4
+        assert removed and removed[0]["text"] == "음"
+
+    def test_filler_inside_sentence_kept(self):
+        # "그"가 다음 단어와 바로 이어짐(무음 없음) → 문장 성분으로 보존
+        words = [{"start": 0.0, "end": 0.3, "text": "그"},
+                 {"start": 0.35, "end": 0.8, "text": "런데요"},
+                 {"start": 0.8, "end": 1.2, "text": "말이죠"}]
+        assert len(autocut.drop_fillers(words)) == 3
+
+    def test_option_wired_into_compute(self):
+        # 마지막 발화(31.6초 종료) 뒤 0.6초 무음 후 "음" — 블록에 붙지만 필러 컷
+        words = four_part_words()
+        words.append({"start": 32.2, "end": 32.5, "text": "음"})
+        opt = EditOptions(fmt="long", remove_fillers=True)
+        segs, *_ = compute(words, None, opt)
+        assert not any(s.src_start <= 32.35 < s.src_end for s in segs)
+        # 옵션 끄면 살아있다
+        segs2, *_ = compute(words, None, EditOptions(fmt="long"))
+        assert any(s.src_start <= 32.35 < s.src_end for s in segs2)
+
+
+class TestReasonsAndReport:
+    def test_segments_carry_reason(self):
+        segs, *_ = compute(four_part_words(), ROW, EditOptions(fmt="short"))
+        assert all(s.reason for s in segs)
+
+    def test_dropped_notes_on_target_drop(self):
+        report = {}
+        words = four_part_words()
+        pipeline._compute_edit(words, _cues(words), ROW, "C:/v.mp4", None,
+                               EditOptions(fmt="short", target_range=(5, 10)),
+                               report)
+        assert any("목표 길이" in d for d in report["dropped"])

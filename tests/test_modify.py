@@ -142,8 +142,9 @@ class TestRunModify:
                         encoding="utf-8").read()
         res, _ = run(pdir)
         assert res.backup_dir and res.segments
-        assert {"role", "src_start", "src_end", "duration", "text"} <= set(
-            res.segments[0].keys())
+        assert {"role", "src_start", "src_end", "duration", "text",
+                "reason"} <= set(res.segments[0].keys())
+        assert any(s["reason"] for s in res.segments)  # 컷 사유가 채워짐
         installer.restore_backup(res.project_dir, res.backup_dir)
         assert open(os.path.join(pdir, "draft_content.json"),
                     encoding="utf-8").read() == original
@@ -169,3 +170,40 @@ class TestRunModify:
                            encoding="utf-8"))
         vsegs = [t for t in d["tracks"] if t["type"] == "video"][0]["segments"]
         assert len(vsegs) == 2  # 문장 중간 0.5초 무음이 잘려 두 컷이 됨
+
+    def test_audio_fade_written_by_default(self, root):
+        pdir = make_project(root, "어깨필러")
+        run(pdir)
+        d = json.load(open(os.path.join(pdir, "draft_content.json"),
+                           encoding="utf-8"))
+        fades = d["materials"]["audio_fades"]
+        vsegs = [t for t in d["tracks"] if t["type"] == "video"][0]["segments"]
+        assert len(fades) == len(vsegs)
+        fade_ids = {f["id"] for f in fades}
+        assert all(set(s["extra_material_refs"]) & fade_ids for s in vsegs)
+
+    def test_audio_fade_off(self, root):
+        pdir = make_project(root, "어깨필러")
+        run(pdir, options=pipeline.EditOptions(audio_fade=False))
+        d = json.load(open(os.path.join(pdir, "draft_content.json"),
+                           encoding="utf-8"))
+        assert d["materials"].get("audio_fades", []) == []
+
+    def test_reference_style_applied(self, root):
+        ref = make_project(root, "레퍼런스프로젝트")
+        p = os.path.join(ref, "draft_content.json")
+        d = json.load(open(p, encoding="utf-8"))
+        c = json.loads(d["materials"]["texts"][0]["content"])
+        c["styles"][0]["font"]["path"] = "C:/f/RefSpecialFont.otf"
+        d["materials"]["texts"][0]["content"] = json.dumps(c,
+                                                           ensure_ascii=False)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+
+        pdir = make_project(root, "본편집")
+        out, logs = run(pdir, reference_dir=ref)
+        assert any("레퍼런스" in m for m in logs)
+        nd = json.load(open(os.path.join(pdir, "draft_content.json"),
+                            encoding="utf-8"))
+        assert any("RefSpecialFont" in (m.get("content") or "")
+                   for m in nd["materials"]["texts"])

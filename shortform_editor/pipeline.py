@@ -37,6 +37,9 @@ class EditOptions:
     pinned_hook: Optional[tuple] = None   # 훅으로 고정할 원본 구간 (start, end)
     deleted: list = field(default_factory=list)    # 삭제 지정 [(start, end)]
     must_keep: list = field(default_factory=list)  # 보호 지정 [(start, end)]
+    remove_fillers: bool = False          # 단독 필러(음·어) 추임새 컷
+    audio_fade: bool = True               # 컷 경계 30ms 페이드(팝음 제거)
+    emphasized: list = field(default_factory=list)  # 강조자막 지정 [(start, end)]
 
 
 @dataclass
@@ -45,10 +48,11 @@ class ModifyResult:
 
     project_dir: str
     backup_dir: str = ""
-    segments: list = field(default_factory=list)   # [{"role","src_start","src_end","duration","text"}]
+    segments: list = field(default_factory=list)   # [{"role","src_start","src_end","duration","text","reason"}]
     warnings: list = field(default_factory=list)
     sentences: list = field(default_factory=list)  # analyze_only: [{"start","end","text"}]
     analyzed_only: bool = False
+    dropped: list = field(default_factory=list)    # 잘린/탈락한 구간 설명 문자열들
 
 
 def _mid_t(w: dict) -> float:
@@ -210,14 +214,19 @@ def _compute_edit(
     video_path: str,
     progress: Optional[Callable[[str], None]] = None,
     options: Optional[EditOptions] = None,
+    report: Optional[dict] = None,
 ):
     """전사 + (선택)기획안 + 옵션 → (segments, 자막, 타이틀, 경고). 컷 계산의 공용 코어.
 
     포맷 규칙: short=구조 재배치+타이틀, mid=순서 유지, long=무음·NG 컷만.
     마지막에 모든 컷 구간 안의 무음(options.max_silence 이상)을 정밀 트리밍한다.
+    report dict를 넘기면 report["dropped"]에 잘린/탈락 구간 설명이 담긴다.
     """
     opt = options or EditOptions()
     warns: list[str] = []
+    dropped: list[str] = []
+    if report is not None:
+        report["dropped"] = dropped
 
     # 삭제 지정 구간의 발화는 처음부터 없는 것으로 취급한다
     if opt.deleted:
@@ -225,6 +234,18 @@ def _compute_edit(
         words = [w for w in words if not _in_ranges(_mid_t(w), opt.deleted)]
         _log(progress, f"삭제 지정 {len(opt.deleted)}구간 반영 — "
                        f"단어 {n0 - len(words)}개 제외")
+        for a, b in opt.deleted:
+            dropped.append(f"{a:.1f}~{b:.1f}초 삭제 — 문장 지정")
+
+    # 단독 필러(음·어) 추임새 컷
+    if opt.remove_fillers:
+        removed_fillers: list[dict] = []
+        words = autocut_mod.drop_fillers(words, removed=removed_fillers)
+        if removed_fillers:
+            _log(progress, f"필러 추임새 {len(removed_fillers)}개 컷")
+            for w in removed_fillers:
+                dropped.append(f"{float(w['start']):.1f}초 필러 "
+                               f"'{(w.get('text') or '').strip()}' 컷")
 
     structured = opt.fmt == "short"
 
@@ -249,7 +270,8 @@ def _compute_edit(
                        f"{sum(c.score for c in result.clips)/len(result.clips):.2f})")
         for clip in result.clips:
             grouped.setdefault(clip.unit.role, []).append(
-                PlanClip(source_id="v1", start=clip.start, end=clip.end))
+                PlanClip(source_id="v1", start=clip.start, end=clip.end,
+                         reason=f"대본 정렬 · 유사도 {clip.score:.2f}"))
     else:
         # --- 2차(폴백): 전사 기반 자동컷 (기획안 없음 또는 즉흥 발화) ---
         if units:
@@ -258,10 +280,15 @@ def _compute_edit(
                  "전사 기반 자동컷으로 전환합니다 (무음·반복 테이크 제거).")
         blocks = autocut_mod.blocks_from_words(words)
         n_raw = len(blocks)
-        blocks = autocut_mod.dedupe_takes(blocks)
+        removed_takes: list = []
+        blocks = autocut_mod.dedupe_takes(blocks, removed=removed_takes)
         if n_raw > len(blocks):
             _log(progress, f"반복 테이크 {n_raw - len(blocks)}개 블록 제거 "
                            f"(마지막 테이크 유지)")
+            for b in removed_takes:
+                snippet = b.text[:20] + ("…" if len(b.text) > 20 else "")
+                dropped.append(f"{b.start:.1f}~{b.end:.1f}초 반복 테이크(NG) "
+                               f"제거 — “{snippet}”")
         if not blocks:
             raise ValueError("발화 구간을 찾지 못했습니다. 영상에 음성이 있는지, "
                              "STT 언어 설정이 맞는지 확인하세요.")
@@ -275,8 +302,11 @@ def _compute_edit(
         else:
             # 미드폼/롱폼: 순서 유지 — 구조 재배치 없음
             roles = {"main": blocks}
+        role_reason = {"hook": "훅 배치(힌트/첫 문장)", "cta": "CTA 배치",
+                       "main": "발화 순서 유지"}
         for role, blks in roles.items():
-            grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end)
+            grouped[role] = [PlanClip(source_id="v1", start=b.start, end=b.end,
+                                      reason=role_reason.get(role, role))
                              for b in blks]
         _log(progress, "자동컷 배치: " + ", ".join(
             f"{r} {len(bs)}컷" for r, bs in roles.items()))
@@ -292,7 +322,8 @@ def _compute_edit(
         for role in list(grouped):
             grouped[role] = [c for c in grouped[role]
                              if not _overlaps(c.start, c.end, [ph])]
-        grouped["hook"] = [PlanClip(source_id="v1", start=ph[0], end=ph[1])]
+        grouped["hook"] = [PlanClip(source_id="v1", start=ph[0], end=ph[1],
+                                    reason="훅 고정 — 문장 지정")]
         _log(progress, f"훅 고정: {ph[0]:.1f}~{ph[1]:.1f}초")
 
     # --- 꼭 살리기 지정: 누락됐으면 main에 추가 ---
@@ -302,7 +333,8 @@ def _compute_edit(
                       for cs in grouped.values() for c in cs)
         if not covered:
             grouped.setdefault("main", []).append(
-                PlanClip(source_id="v1", start=s, end=e))
+                PlanClip(source_id="v1", start=s, end=e,
+                         reason="꼭 살리기 — 문장 지정"))
             _log(progress, f"꼭 살리기 반영: {s:.1f}~{e:.1f}초")
     if "main" in grouped:
         grouped["main"].sort(key=lambda c: c.start)
@@ -312,9 +344,12 @@ def _compute_edit(
     for role in list(grouped):
         trimmed: list[PlanClip] = []
         for c in grouped[role]:
-            for s, e in autocut_mod.trim_silence(words, c.start, c.end,
-                                                 max_silence=opt.max_silence):
-                trimmed.append(PlanClip(source_id=c.source_id, start=s, end=e))
+            pieces = autocut_mod.trim_silence(words, c.start, c.end,
+                                              max_silence=opt.max_silence)
+            reason = c.reason + (" · 무음 컷" if len(pieces) > 1 else "")
+            for s, e in pieces:
+                trimmed.append(PlanClip(source_id=c.source_id, start=s, end=e,
+                                        reason=reason))
         grouped[role] = trimmed
     n_after = sum(len(cs) for cs in grouped.values())
     if n_after > n_before:
@@ -349,18 +384,22 @@ def _compute_edit(
             mains = grouped["main"]
             order = sorted(range(len(mains)),
                            key=lambda i: _value(mains[i], i, len(mains)))
-            dropped = set()
+            dropped_idx: set[int] = set()
             for i in order:
                 if total <= tmax:
                     break
                 if _value(mains[i], i, len(mains)) == float("inf"):
                     continue
-                dropped.add(i)
+                dropped_idx.add(i)
                 total -= mains[i].duration
                 _log(progress, f"길이 조절: main 컷 탈락 "
                                f"({mains[i].start:.1f}~{mains[i].end:.1f}초)")
+                snippet = _range_text(words, mains[i].start, mains[i].end,
+                                      limit=20)
+                dropped.append(f"{mains[i].start:.1f}~{mains[i].end:.1f}초 "
+                               f"탈락 — 목표 길이 초과(관련도 낮음) “{snippet}”")
             grouped["main"] = [c for i, c in enumerate(mains)
-                               if i not in dropped]
+                               if i not in dropped_idx]
             if not grouped["main"]:
                 del grouped["main"]
         total = sum(c.duration for cs in grouped.values() for c in cs)
@@ -390,6 +429,24 @@ def _compute_edit(
         return any(a <= mid < b for a, b in hook_ranges)
 
     final_caps = [c for c in final_caps if not _in_hook(c)]
+
+    # 강조자막 지정: 원본 시간 범위를 최종 타임라인으로 옮겨 겹치는 자막에 표시
+    if opt.emphasized:
+        emph_t: list[tuple[float, float]] = []
+        for a, b in opt.emphasized:
+            for s in segments:
+                ov_s, ov_e = max(float(a), s.src_start), min(float(b), s.src_end)
+                if ov_e > ov_s:
+                    emph_t.append((s.target_start + (ov_s - s.src_start),
+                                   s.target_start + (ov_e - s.src_start)))
+        n_emph = 0
+        for c in final_caps:
+            mid = (c["start"] + c["end"]) / 2
+            if any(x <= mid < y for x, y in emph_t):
+                c["kind"] = "emph"
+                n_emph += 1
+        if n_emph:
+            _log(progress, f"강조자막 {n_emph}개 지정")
 
     # 상단질문 타이틀 오버레이 (숏폼 전용 — 후킹 구간, 없으면 첫 3초)
     titles: list[dict] = []
@@ -549,6 +606,7 @@ def run_modify(
     analyze_only: bool = False,
     use_cache: bool = True,
     backup_dir: Optional[str] = None,
+    reference_dir: Optional[str] = None,
     progress: Optional[Callable[[str], None]] = None,
     transcribe_words_fn: Callable[..., tuple] = captions_mod.transcribe_words,
     running_check: Callable[[], bool] = installer.capcut_running,
@@ -562,6 +620,9 @@ def run_modify(
     analyze_only=True: STT까지만 수행하고 문장 목록을 돌려준다(캐시 저장).
     쓰기가 없으므로 캡컷이 실행 중이어도 된다 — GUI의 [① 분석] 단계.
     전사는 프로젝트 폴더의 캐시(.autoedit_transcript.json)로 재사용된다.
+
+    reference_dir: 자막 디자인 레퍼런스 프로젝트 — 그 프로젝트의 자막/타이틀/
+    강조자막 스타일을 수확해 이번 편집에 적용한다(영상 스키마는 자기 것 유지).
     """
     name = os.path.basename(project_dir)
     draft = installer.load_template(project_dir)
@@ -619,6 +680,25 @@ def run_modify(
             "CapCut이 실행 중입니다. 편집할 프로젝트가 캡컷에 열려 있으면 "
             "수정이 유실됩니다 — 캡컷을 완전히 닫고 다시 실행해 주세요.")
 
+    # 레퍼런스 프로젝트의 자막/타이틀/강조 스타일을 우선 적용
+    if reference_dir and (os.path.normpath(reference_dir)
+                          != os.path.normpath(project_dir)):
+        try:
+            ref = capcut_draft.harvest_prototypes(
+                installer.load_template(reference_dir), require_text=False)
+        except (OSError, ValueError) as e:
+            ref = None
+            _log(progress, f"⚠ 레퍼런스 프로젝트를 읽지 못했습니다: {e}")
+        if ref:
+            applied = [k for k in ("subtitle", "title", "emphasis")
+                       if ref.get(k)]
+            for k in applied:
+                protos[k] = ref[k]
+            if applied:
+                _log(progress, "레퍼런스 스타일 적용"
+                               f"({os.path.basename(reference_dir)}): "
+                               + ", ".join(applied))
+
     # 자막 프로토가 없으면(막 올린 프로젝트) 다른 프로젝트에서 스타일 차용
     if "subtitle" not in protos:
         donor_root = os.path.dirname(project_dir)
@@ -640,8 +720,9 @@ def run_modify(
                 "자막 스타일을 가져올 프로젝트가 없습니다. CapCut에서 자막이 "
                 "있는 프로젝트를 하나 만들어 두면 그 스타일을 따라갑니다.")
 
+    report: dict = {}
     segments, final_caps, titles, warns = _compute_edit(
-        words, cues, script_row, src_path, progress, options)
+        words, cues, script_row, src_path, progress, options, report)
 
     # 캔버스·길이는 프로젝트의 실측값을 그대로 쓴다 (ffprobe 불필요)
     cc = draft.get("canvas_config") or {}
@@ -649,11 +730,16 @@ def run_modify(
     dur_us = max((int(m.get("duration") or 0) for m in videos), default=0)
     durations = {"v1": dur_us / 1_000_000} if dur_us else None
 
+    opt = options or EditOptions()
+    fade_us = capcut_draft.AUDIO_FADE_US if opt.audio_fade else None
+    if fade_us:
+        _log(progress, "컷 경계 30ms 오디오 페이드 적용(팝음 제거)")
+
     _log(progress, "프로젝트 내용 재구성 중…")
     new_draft = capcut_draft.build_draft(
         segments, final_caps, name=draft.get("name") or name, canvas=canvas,
         source_durations=durations, template=draft, titles=titles,
-        protos=protos)
+        protos=protos, audio_fade_us=fade_us)
     new_draft["id"] = draft.get("id", new_draft["id"])  # 프로젝트 정체성 유지
 
     bdir = installer.update_project_files(new_draft, project_dir,
@@ -663,10 +749,12 @@ def run_modify(
 
     summary = [{"role": s.role, "src_start": s.src_start,
                 "src_end": s.src_end, "duration": s.duration,
-                "text": _range_text(words, s.src_start, s.src_end)}
+                "text": _range_text(words, s.src_start, s.src_end),
+                "reason": s.reason}
                for s in segments]
     return ModifyResult(project_dir=project_dir, backup_dir=bdir,
-                        segments=summary, warnings=warns)
+                        segments=summary, warnings=warns,
+                        dropped=report.get("dropped", []))
 
 
 def default_projects_root() -> Optional[str]:

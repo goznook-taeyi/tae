@@ -23,6 +23,10 @@ from .timeline import Segment
 
 US = 1_000_000  # 1초 = 1,000,000 마이크로초
 
+# 컷 경계 오디오 페이드 기본 길이(µs) — 컷마다 30ms 인/아웃 페이드로 팝음 제거
+# (video-use Hard Rule 3 이식. 스키마는 실제 CapCut 프로젝트에서 수확한 실물 그대로)
+AUDIO_FADE_US = 30_000
+
 
 def _uuid() -> str:
     return str(uuid.uuid4()).upper()
@@ -99,6 +103,40 @@ def _support_material(mid: str, mtype: str) -> dict:
     elif mtype == "vocal_separation":
         base["choice"] = 0
     return base
+
+
+def _audio_fade_material(mid: str, fade_us: int) -> dict:
+    """실측 스키마(0502/0613 프로젝트에서 수확)의 audio_fade material."""
+    return {
+        "id": mid,
+        "type": "audio_fade",
+        "fade_type": 0,
+        "fade_in_duration": fade_us,
+        "fade_out_duration": fade_us,
+    }
+
+
+def _attach_audio_fades(video_segments: list[dict], materials: dict,
+                        gen: Callable[[], str], fade_us: int) -> None:
+    """모든 비디오 세그먼트에 인/아웃 페이드를 단다.
+
+    프로토타입 복제로 이미 페이드 ref를 가진 세그먼트는 새로 달지 않고
+    그 material의 페이드 길이만 fade_us로 맞춘다(중복 방지).
+    """
+    fades = materials.setdefault("audio_fades", [])
+    existing = {m.get("id"): m for m in fades if isinstance(m, dict)}
+    for sd in video_segments:
+        refs = sd.setdefault("extra_material_refs", [])
+        owned = [existing[r] for r in refs if r in existing]
+        if owned:
+            for m in owned:
+                m["fade_in_duration"] = fade_us
+                m["fade_out_duration"] = fade_us
+            continue
+        fade = _audio_fade_material(gen(), fade_us)
+        fades.append(fade)
+        existing[fade["id"]] = fade
+        refs.append(fade["id"])
 
 
 def _video_segment(seg_id: str, material_id: str, seg: Segment,
@@ -179,13 +217,27 @@ def _proto_entry(template: dict, seg: dict):
     return {"segment": seg, "material": mat, "extras": extras}
 
 
+def _text_style_size(mat: dict) -> float:
+    """텍스트 material의 폰트 크기(스타일 중 최대) — 강조자막 판별용."""
+    try:
+        data = json.loads(mat.get("content") or "")
+        sizes = [s.get("size") for s in data.get("styles", [])
+                 if isinstance(s, dict)
+                 and isinstance(s.get("size"), (int, float))]
+        return float(max(sizes)) if sizes else 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def harvest_prototypes(template: Optional[dict],
                        require_text: bool = True) -> Optional[dict]:
     """template(실제 draft dict)에서 비디오/자막/타이틀 프로토타입을 수확한다.
 
-    반환: {"video": entry, "subtitle": entry, "title": entry} 또는 None.
+    반환: {"video", "subtitle", "title", "emphasis"} entry dict 또는 None.
     subtitle = material type이 'subtitle'(자동캡션)인 텍스트,
     title = 그 외 텍스트(인용 타이틀 등). 없으면 subtitle로 대신한다.
+    emphasis = 비-자막 텍스트가 여러 스타일이면 폰트가 가장 큰 것(강조자막),
+    하나뿐이면 title과 동일.
 
     require_text=False면 텍스트 프로토가 없어도 video만으로 반환한다
     (수정 모드에서 자막 프로토는 다른 프로젝트에서 빌려올 수 있음).
@@ -193,6 +245,7 @@ def harvest_prototypes(template: Optional[dict],
     if not template or not template.get("tracks"):
         return None
     protos: dict[str, dict] = {}
+    title_entries: list[dict] = []
     for tr in template["tracks"]:
         segs = tr.get("segments") or []
         if not segs:
@@ -206,9 +259,14 @@ def harvest_prototypes(template: Optional[dict],
                 entry = _proto_entry(template, seg)
                 if not entry:
                     continue
-                kind = ("subtitle" if entry["material"].get("type") == "subtitle"
-                        else "title")
-                protos.setdefault(kind, entry)
+                if entry["material"].get("type") == "subtitle":
+                    protos.setdefault("subtitle", entry)
+                else:
+                    title_entries.append(entry)
+    if title_entries:
+        protos["title"] = title_entries[0]
+        protos["emphasis"] = max(title_entries, key=lambda e:
+                                 _text_style_size(e["material"]))
     if "video" not in protos:
         return None
     has_text = "subtitle" in protos or "title" in protos
@@ -217,6 +275,7 @@ def harvest_prototypes(template: Optional[dict],
     if has_text:
         protos.setdefault("subtitle", protos.get("title"))
         protos.setdefault("title", protos.get("subtitle"))
+        protos.setdefault("emphasis", protos.get("title"))
     return protos
 
 
@@ -378,7 +437,7 @@ def _empty_materials_lists(materials: dict) -> None:
     for key in ("videos", "texts", "audios", "speeds", "canvases",
                 "sound_channel_mappings", "vocal_separations",
                 "material_animations", "material_colors", "placeholder_infos",
-                "effects", "stickers", "transitions"):
+                "effects", "stickers", "transitions", "audio_fades"):
         materials.setdefault(key, [])
         materials[key] = []
 
@@ -409,6 +468,7 @@ def build_draft(
     id_gen: Optional[Callable[[], str]] = None,
     titles: Optional[list[dict]] = None,
     protos: Optional[dict] = None,
+    audio_fade_us: Optional[int] = None,
 ) -> dict:
     """세그먼트/자막 → CapCut draft dict.
 
@@ -454,8 +514,11 @@ def build_draft(
                 protos["video"], materials, seg, seg.source_path,
                 dur_us, canvas_w, canvas_h, mat_cache, gen))
         for cap in captions:
+            proto = protos["subtitle"]
+            if cap.get("kind") == "emph":
+                proto = protos.get("emphasis") or proto
             text_track_segments.append(_clone_text_from_proto(
-                protos["subtitle"], materials, cap, gen))
+                proto, materials, cap, gen))
         for cap in (titles or []):
             title_track_segments.append(_clone_text_from_proto(
                 protos["title"], materials, cap, gen))
@@ -498,6 +561,10 @@ def build_draft(
             # 타이틀은 상단에 배치
             tseg["clip"]["transform"]["y"] = 0.6
             title_track_segments.append(tseg)
+
+    if audio_fade_us:
+        _attach_audio_fades(video_track_segments, materials, gen,
+                            audio_fade_us)
 
     total_us = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"]
                     for s in video_track_segments), default=0)

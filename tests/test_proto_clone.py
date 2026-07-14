@@ -172,3 +172,89 @@ class TestCloneBuild:
         assert draft["config"] == {"some_real_flag": True}  # 실측 설정 유지
         assert draft["duration"] == 8_000_000
         assert draft["name"] == "테스트"
+
+
+def _title_text_mat(mid: str, size: float) -> dict:
+    return {"id": mid, "type": "text", "content": json.dumps(
+        {"text": "타이틀", "styles": [{"range": [0, 3], "size": size}]},
+        ensure_ascii=False)}
+
+
+def make_template_with_emphasis():
+    """자막 + 타이틀(작음) + 강조자막(큼) 3종 텍스트가 있는 template."""
+    t = make_template()
+    t["materials"]["texts"] += [_title_text_mat("MAT-T2", 8.0),
+                                _title_text_mat("MAT-T3", 15.0)]
+    t["tracks"].append({"id": "TR-T2", "type": "text", "segments": [
+        {"id": "SEG-T2", "material_id": "MAT-T2", "extra_material_refs": [],
+         "target_timerange": {"start": 0, "duration": 1_000_000}},
+        {"id": "SEG-T3", "material_id": "MAT-T3", "extra_material_refs": [],
+         "target_timerange": {"start": 0, "duration": 1_000_000}},
+    ]})
+    return t
+
+
+class TestEmphasisHarvest:
+    def test_emphasis_prefers_largest_font(self):
+        protos = capcut_draft.harvest_prototypes(make_template_with_emphasis())
+        assert protos["title"]["material"]["id"] == "MAT-T2"   # 첫 타이틀
+        assert protos["emphasis"]["material"]["id"] == "MAT-T3"  # 가장 큰 폰트
+
+    def test_emphasis_falls_back_to_title(self):
+        protos = capcut_draft.harvest_prototypes(make_template())
+        assert protos["emphasis"] is protos["title"]
+
+    def test_emph_caption_cloned_from_emphasis_proto(self):
+        caps = [{"start": 0.5, "end": 2.0, "text": "평범한 자막"},
+                {"start": 2.0, "end": 3.0, "text": "강조할 자막",
+                 "kind": "emph"}]
+        draft = capcut_draft.build_draft(
+            make_segments(), caps, name="t", canvas=(1080, 1920),
+            template=make_template_with_emphasis(),
+            id_gen=sequential_id_gen())
+        emph = [m for m in draft["materials"]["texts"]
+                if "강조할 자막" in (m.get("content") or "")][0]
+        assert json.loads(emph["content"])["styles"][0]["size"] == 15.0
+        normal = [m for m in draft["materials"]["texts"]
+                  if "평범한 자막" in (m.get("content") or "")][0]
+        assert normal["type"] == "subtitle"
+
+
+class TestAudioFade:
+    def build(self, template, fade_us):
+        return capcut_draft.build_draft(
+            make_segments(), CAPS, name="t", canvas=(1080, 1920),
+            template=template, id_gen=sequential_id_gen(),
+            audio_fade_us=fade_us)
+
+    def test_fade_per_segment(self):
+        draft = self.build(make_template(), 30_000)
+        fades = draft["materials"]["audio_fades"]
+        assert len(fades) == 2  # 세그먼트당 1개
+        assert all(f["type"] == "audio_fade"
+                   and f["fade_in_duration"] == 30_000
+                   and f["fade_out_duration"] == 30_000 for f in fades)
+        fade_ids = {f["id"] for f in fades}
+        vsegs = [t for t in draft["tracks"] if t["type"] == "video"][0]["segments"]
+        for s in vsegs:
+            assert len(set(s["extra_material_refs"]) & fade_ids) == 1
+
+    def test_no_fade_when_disabled(self):
+        draft = self.build(make_template(), None)
+        assert draft["materials"].get("audio_fades", []) == []
+
+    def test_proto_fade_overridden_not_duplicated(self):
+        t = make_template()
+        t["materials"]["audio_fades"] = [
+            {"id": "X-FADE", "type": "audio_fade", "fade_type": 0,
+             "fade_in_duration": 0, "fade_out_duration": 766_666}]
+        t["tracks"][0]["segments"][0]["extra_material_refs"].append("X-FADE")
+        draft = self.build(t, 30_000)
+        fades = draft["materials"]["audio_fades"]
+        vsegs = [tr for tr in draft["tracks"]
+                 if tr["type"] == "video"][0]["segments"]
+        fade_ids = {f["id"] for f in fades}
+        for s in vsegs:  # 복제된 페이드가 있으면 재사용·덮어쓰기, 중복 없음
+            assert len(set(s["extra_material_refs"]) & fade_ids) == 1
+        assert all(f["fade_in_duration"] == 30_000
+                   and f["fade_out_duration"] == 30_000 for f in fades)

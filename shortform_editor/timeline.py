@@ -29,6 +29,7 @@ class Segment:
     src_end: float
     target_start: float
     role: str
+    reason: str = ""  # 이 컷이 선택된 근거 (결과 요약 표시용)
 
     @property
     def duration(self) -> float:
@@ -56,6 +57,7 @@ def build_segments(plan: EditPlan) -> list[Segment]:
                 src_end=clip.end,
                 target_start=cursor,
                 role=section.role,
+                reason=clip.reason,
             )
             segments.append(seg)
             cursor += seg.duration

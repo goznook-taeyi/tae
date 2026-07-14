@@ -73,8 +73,11 @@ FORMATS = {
 SILENCE_LEVELS = {"타이트 (0.15초)": 0.15, "보통 (0.2초)": 0.2,
                   "여유 (0.4초)": 0.4}
 PRESET_CHIPS = ["잡담·군더더기 전부 삭제", "훅 더 세게", "펀치라인으로 끝내기",
-                "말 느린 부분 살짝 배속", "마지막은 여운 있게", "자막 오타 다듬기"]
-TAG_LABELS = {"hook": "훅", "delete": "삭제", "keep": "살리기"}
+                "말 느린 부분 살짝 배속", "마지막은 여운 있게", "자막 오타 다듬기",
+                "위트·감정 장면에 강조자막"]
+TAG_LABELS = {"hook": "훅", "delete": "삭제", "keep": "살리기",
+              "emph": "강조"}
+NO_REFERENCE = "(이 프로젝트 스타일 그대로)"
 
 
 def _beep() -> None:
@@ -225,6 +228,25 @@ class Studio:
                      state="readonly", width=26,
                      values=list(SILENCE_LEVELS)).grid(
             row=2, column=1, sticky="w", padx=(12, 0), pady=3)
+        tk.Label(grid, text="자막 레퍼런스", font=(FONT, 9), bg=CARD,
+                 fg=INK).grid(row=3, column=0, sticky="w", pady=3)
+        self.ref_var = tk.StringVar(value=NO_REFERENCE)
+        self.ref_combo = ttk.Combobox(grid, textvariable=self.ref_var,
+                                      font=(FONT, 9), state="readonly",
+                                      width=26)
+        self.ref_combo.grid(row=3, column=1, sticky="w", padx=(12, 0), pady=3)
+        checks = tk.Frame(c2, bg=CARD)
+        checks.pack(fill="x", pady=(4, 0))
+        self.fade_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(checks, text="컷 경계 페이드 (팝음 제거)",
+                       variable=self.fade_var, font=(FONT, 9), bg=CARD,
+                       fg=INK, activebackground=CARD,
+                       selectcolor=CARD).pack(side="left")
+        self.filler_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(checks, text="필러(음·어) 추임새 컷",
+                       variable=self.filler_var, font=(FONT, 9), bg=CARD,
+                       fg=INK, activebackground=CARD,
+                       selectcolor=CARD).pack(side="left", padx=(16, 0))
         self._sync_lengths()
 
         # 카드 3: 기획안
@@ -272,7 +294,8 @@ class Studio:
         self.analyze_btn.pack(side="left")
         self.analyze_btn.bind("<Button-1>", lambda _e: self._analyze())
         for tag, text in (("hook", "훅 지정"), ("delete", "삭제"),
-                          ("keep", "꼭 살리기"), (None, "해제")):
+                          ("keep", "꼭 살리기"), ("emph", "강조자막"),
+                          (None, "해제")):
             lbl = tk.Label(a_row, text=text, font=(FONT, 9), bg=CARD, fg=BLUE,
                            cursor="hand2")
             lbl.pack(side="left", padx=(12, 0))
@@ -408,6 +431,16 @@ class Studio:
         self.proj_combo.configure(values=[d for d, _ in self._projects])
         if self._projects and not self.proj_var.get():
             self.proj_combo.current(0)
+        self.ref_combo.configure(
+            values=[NO_REFERENCE] + [d for d, _ in self._projects])
+        if not self.ref_var.get():
+            self.ref_var.set(NO_REFERENCE)
+
+    def _selected_reference(self) -> str | None:
+        idx = self.ref_combo.current() - 1  # 0번은 "(이 프로젝트 스타일)"
+        if 0 <= idx < len(self._projects):
+            return self._projects[idx][1]
+        return None
 
     def _selected_project(self) -> str | None:
         idx = self.proj_combo.current()
@@ -576,6 +609,8 @@ class Studio:
             fmt=cfg["fmt"],
             max_silence=SILENCE_LEVELS[self.sil_var.get()],
             target_range=target,
+            audio_fade=self.fade_var.get(),
+            remove_fillers=self.filler_var.get(),
         )
         for i, tag in self._tags.items():
             s = self._sentences[i]
@@ -586,6 +621,8 @@ class Studio:
                 opt.deleted.append(rng)
             elif tag == "keep":
                 opt.must_keep.append(rng)
+            elif tag == "emph":
+                opt.emphasized.append(rng)
         return opt
 
     # ------------------------------------------------------------- 실행
@@ -609,10 +646,12 @@ class Studio:
         opt = self._build_options()
         row = self._selected_row()
         request = self._request_text()
+        reference = self._selected_reference()
 
         def work():
             try:
                 res = pipeline.run_modify(project, row, options=opt,
+                                          reference_dir=reference,
                                           progress=self._log_msg)
                 self._last_result = res
                 self.root.after(0, lambda: self._show_result(res))
@@ -647,10 +686,14 @@ class Studio:
         total = sum(s["duration"] for s in res.segments)
         lines = [f"총 {total:.1f}초 · {len(res.segments)}컷"]
         for s in res.segments:
+            reason = f"  ← {s['reason']}" if s.get("reason") else ""
             lines.append(
                 f"{TAG_LABELS.get(s['role'], s['role']):<4}"
                 f"| {s['src_start']:7.1f}→{s['src_end']:7.1f}s "
-                f"({s['duration']:4.1f}s) | {s['text']}")
+                f"({s['duration']:4.1f}s) | {s['text']}{reason}")
+        if res.dropped:
+            lines.append("— 잘린 이유 —")
+            lines.extend(f"  {d}" for d in res.dropped)
         for w in res.warnings:
             lines.append(f"⚠ {w}")
         self.summary.insert("1.0", "\n".join(lines))
@@ -689,13 +732,35 @@ class Studio:
             self._log_msg("❌ Claude 실행 파일을 찾지 못해 다듬기를 건너뜁니다.")
             return
         self._ensure_backend()
+        project_dir = os.path.join(self._projects_root(), project)
+        cache = os.path.join(project_dir, ".autoedit_transcript.json")
+        tae_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tv = os.path.join(tae_root, "tools", "timeline_view.py")
+        py = sys.executable.replace("pythonw.exe", "python.exe")
+        ref = self.ref_var.get()
         parts = [
             f"캡컷 프로젝트 '{project}' 편집 요청입니다.",
+            f"프로젝트 폴더: {project_dir}",
             "CLAUDE.md의 규칙(캡컷 종료 확인, 백업 필수)을 반드시 따라줘.",
             "방금 자동 가편집(무음·NG 컷, 구조 배치, 자막)이 적용된 상태다 — "
             "이걸 초벌로 두고 아래 요청만 반영해줘.",
             f"포맷: {self.fmt_var.get()}, 목표 길이: {self.len_var.get()}.",
+            f"전사는 재수행하지 마 — 단어 타임스탬프가 든 캐시가 있다: {cache}",
+            f"컷 경계가 애매하면 `{py} {tv} <영상경로> <시작초> <끝초> "
+            f"--transcript {cache}` 로 필름스트립+파형 PNG를 만들어 Read로 "
+            "직접 확인해서 판단해 (의사결정 지점에서만, 스캔 루프 금지).",
+        ]
+        if ref and ref != NO_REFERENCE:
+            parts.append(
+                f"자막 디자인 레퍼런스: '{ref}' 프로젝트의 자막/타이틀/강조 "
+                "스타일이 이미 적용돼 있다. 위트있거나 감정이 드러나는 문장은 "
+                "draft 안의 강조 스타일 텍스트 material을 복제해 강조자막으로 "
+                "바꿔도 좋다 (기존 스타일 필드는 유지, 텍스트·시간만 교체).")
+        parts += [
             "상세 요청: " + request.replace('"', "'"),
+            "수정을 마치면 셀프 검수: 무음이 0.15~0.4초로 짧아 경계가 애매했던 "
+            "컷 2~3곳을 timeline_view(경계 ±1.5초)로 확인하고, 구(句) 중간을 "
+            "자른 곳이 있으면 경계를 보정한 뒤 마무리해.",
             "작업이 끝나면 마지막 줄에 '=== 편집 완료 ===' 를 출력해줘. "
             "진행할 수 없으면 이유와 함께 '=== 편집 실패 ==='를 출력해줘.",
         ]
@@ -729,7 +794,6 @@ class Studio:
         link.pack(side="right")
         link.bind("<Button-1>",
                   lambda _e, p=log_path: subprocess.Popen(["notepad.exe", p]))
-        project_dir = os.path.join(self._projects_root(), project)
         self._jobs.append({"proc": proc, "dot": dot, "stat": stat,
                            "log": log_path, "file": log_file, "done": False,
                            "dir": project_dir,

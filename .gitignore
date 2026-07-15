@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime data
+data/uploads/
+*.mp4
+*.avi
+*.mov
+scratch/
+
+# OS
+.DS_Store

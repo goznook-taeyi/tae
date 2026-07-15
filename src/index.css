@@ -1,0 +1,28 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-inter-tight: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: #ffffff;
+  font-family: var(--font-inter-tight);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* Hide the native cursor on non-touch pointers; the custom cursor takes over. */
+@media (pointer: fine) and (min-width: 1024px) {
+  html.has-custom-cursor,
+  html.has-custom-cursor * {
+    cursor: none;
+  }
+}

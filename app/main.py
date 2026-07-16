@@ -6,9 +6,10 @@ import os
 import shutil
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .auth import PasswordGateMiddleware, get_password, make_login_response
 from .config import settings
 from .jobs import JobStore
 from .models import JobStatus
@@ -22,12 +23,35 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(THUMB_ROOT, exist_ok=True)
 
 app = FastAPI(title="자막 오타 검수 보조 도구", version="0.1.0")
+app.add_middleware(PasswordGateMiddleware)
 store = JobStore(settings)
 
 
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok", "ocr_engine": settings.ocr_engine}
+
+
+def _login_page(error: str = "") -> HTMLResponse:
+    with open(os.path.join(FRONTEND_DIR, "login.html"), encoding="utf-8") as f:
+        html = f.read()
+    err_html = f'<div class="login-error">{error}</div>' if error else ""
+    return HTMLResponse(html.replace("<!--ERROR-->", err_html))
+
+
+@app.get("/login")
+def login_form() -> HTMLResponse:
+    if not get_password():
+        return HTMLResponse('<meta http-equiv="refresh" content="0;url=/">')
+    return _login_page()
+
+
+@app.post("/login")
+def login_submit(password: str = Form("")):
+    resp = make_login_response(password)
+    if resp is None:
+        return _login_page("비밀번호가 올바르지 않습니다.")
+    return resp
 
 
 @app.get("/")

@@ -24,6 +24,17 @@
 - **조건 좋음**(고대비·표준폰트·720p+): 다수결 후 문자 정확도 ~97%+ 기대, 실제 오타 대부분 검출
 - **조건 나쁨**(밝고 복잡한 배경·스타일 폰트·반투명 캡션·저화질·빠른 자막): 정확도 급락 → "확인 필요" 비중 증가
 
+## 팀 공유 (온라인 배포)
+
+팀원들이 브라우저로 바로 쓰게 하려면 **[DEPLOY.md](DEPLOY.md)** 를 따라 Hugging Face Spaces(무료)에
+원커맨드로 배포하세요. 접속은 공유 비밀번호(`APP_PASSWORD` 시크릿)로 보호됩니다.
+
+```bash
+python scripts/deploy_hf.py --space <HF계정>/subtitle-checker --password <팀비밀번호>
+```
+
+내 PC에서 직접 돌리려면 **[LOCAL_GUIDE.md](LOCAL_GUIDE.md)** 참고.
+
 ## 설치
 
 ```bash

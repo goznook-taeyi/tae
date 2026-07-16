@@ -109,32 +109,84 @@ def ocr_frame(
 # --------------------------------------------------------------------------- #
 # 실제 백엔드 (지연 로드)
 # --------------------------------------------------------------------------- #
+def _poly_to_bbox(poly, image_shape) -> tuple[int, int, int, int]:
+    if poly is None:
+        h, w = image_shape[:2]
+        return (0, 0, w, h)
+    pts = np.array(poly).reshape(-1, 2)
+    xs, ys = pts[:, 0], pts[:, 1]
+    return (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
+
+
+def _field(result, key):
+    """PaddleOCR 3.x OCRResult(dict 유사)에서 안전하게 필드 꺼내기."""
+    try:
+        return result[key]
+    except (KeyError, TypeError, IndexError):
+        pass
+    getter = getattr(result, "get", None)
+    return getter(key) if callable(getter) else None
+
+
 class PaddleOCREngine(OCREngine):
+    """PaddleOCR 2.x/3.x 모두 지원. 3.x는 predict()+dict 결과, 2.x는 ocr()+튜플 결과."""
+
     def __init__(self, lang: str = "korean") -> None:
         self.lang = lang
         self._ocr = None
+        self._api = None  # 3 또는 2
 
     def _get(self):
         if self._ocr is None:
             from paddleocr import PaddleOCR  # 지연 import
 
-            self._ocr = PaddleOCR(use_angle_cls=True, lang=self.lang, show_log=False)
+            try:  # 3.x 시그니처
+                self._ocr = PaddleOCR(
+                    lang=self.lang,
+                    use_textline_orientation=True,
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                )
+                self._api = 3
+            except (TypeError, ValueError):  # 2.x 폴백
+                self._ocr = PaddleOCR(use_angle_cls=True, lang=self.lang, show_log=False)
+                self._api = 2
         return self._ocr
 
     def read_boxes(self, image: np.ndarray) -> list[OcrBox]:
         ocr = self._get()
-        raw = ocr.ocr(image, cls=True)
+        if self._api == 3:
+            return self._read_v3(ocr, image)
+        return self._read_v2(ocr, image)
+
+    def _read_v3(self, ocr, image: np.ndarray) -> list[OcrBox]:
         boxes: list[OcrBox] = []
-        # PaddleOCR 반환: [[ [pts], (text, conf) ], ...] 또는 [None]
+        results = ocr.predict(image)
+        for r in results or []:
+            texts = _field(r, "rec_texts") or []
+            scores = _field(r, "rec_scores") or []
+            polys = _field(r, "rec_polys")
+            if polys is None:
+                polys = _field(r, "dt_polys")
+            for i, text in enumerate(texts):
+                conf = float(scores[i]) if i < len(scores) else 0.0
+                poly = polys[i] if polys is not None and i < len(polys) else None
+                boxes.append(
+                    OcrBox(text=str(text), confidence=conf, bbox=_poly_to_bbox(poly, image.shape))
+                )
+        return boxes
+
+    def _read_v2(self, ocr, image: np.ndarray) -> list[OcrBox]:
+        boxes: list[OcrBox] = []
+        raw = ocr.ocr(image, cls=True)
         if not raw or raw[0] is None:
             return boxes
         for line in raw[0]:
             try:
                 pts, (text, conf) = line
-                xs = [p[0] for p in pts]
-                ys = [p[1] for p in pts]
-                bbox = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
-                boxes.append(OcrBox(text=str(text), confidence=float(conf), bbox=bbox))
+                boxes.append(
+                    OcrBox(text=str(text), confidence=float(conf), bbox=_poly_to_bbox(pts, image.shape))
+                )
             except (ValueError, TypeError):
                 continue
         return boxes

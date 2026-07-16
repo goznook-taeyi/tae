@@ -80,6 +80,22 @@ def test_persistence_mask_marks_static_region():
     assert mask[:, 200:].mean() < 0.1   # 변동 영역은 마스킹 안 됨
 
 
+def test_aggregate_text_band():
+    from app.video import aggregate_text_band
+
+    # 자막이 세로 0.6~0.7 부근에 모여 있음 (+ 이상치 하나)
+    y_fracs = [(0.60, 0.68), (0.61, 0.69), (0.59, 0.67), (0.62, 0.70), (0.05, 0.10)]
+    top, bottom = aggregate_text_band(y_fracs)
+    assert 0.5 < top < 0.62
+    assert 0.66 < bottom < 0.75
+
+
+def test_aggregate_text_band_empty():
+    from app.video import aggregate_text_band
+
+    assert aggregate_text_band([]) == (0.0, 1.0)
+
+
 def test_pick_vote_frames_evenly():
     frames = [make_frame(i, i, 0) for i in range(10)]
     picked = pick_vote_frames(frames, 3)

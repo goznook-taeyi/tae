@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -36,9 +36,31 @@ def index() -> FileResponse:
 
 
 @app.post("/analyze")
-async def analyze(file: UploadFile) -> JSONResponse:
+async def analyze(
+    file: UploadFile,
+    roi_preset: str | None = Form(None),
+    grouping_mode: str | None = Form(None),
+    sample_fps: float | None = Form(None),
+    votes_per_segment: int | None = Form(None),
+    roi_top_frac: float | None = Form(None),
+    roi_bottom_frac: float | None = Form(None),
+) -> JSONResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="파일이 없습니다.")
+
+    # 요청별 설정 오버라이드 (제공된 값만)
+    overrides = {
+        k: v
+        for k, v in {
+            "roi_preset": roi_preset,
+            "grouping_mode": grouping_mode,
+            "sample_fps": sample_fps,
+            "votes_per_segment": votes_per_segment,
+            "roi_top_frac": roi_top_frac,
+            "roi_bottom_frac": roi_bottom_frac,
+        }.items()
+        if v is not None
+    }
 
     job_id = store.create()
     dest = os.path.join(UPLOAD_DIR, f"{job_id}_{os.path.basename(file.filename)}")
@@ -58,7 +80,7 @@ async def analyze(file: UploadFile) -> JSONResponse:
             out.write(chunk)
 
     thumb_dir = os.path.join(THUMB_ROOT, job_id)
-    store.submit(job_id, dest, thumb_dir)
+    store.submit(job_id, dest, thumb_dir, overrides)
     return JSONResponse(status_code=202, content={"job_id": job_id})
 
 

@@ -72,6 +72,18 @@ python scripts/make_test_clip.py scratch/test_clip.mp4
 주요 항목: `sample_fps`, `roi_*_frac`(자막 밴드), `votes_per_segment`(K), `stability_*`(무빙),
 `sticker_static_window_s`(스티커 지속성), `low_confidence_threshold`.
 
+### 그룹핑 모드 (`grouping_mode`)
+- `image`(기본): ROI 이미지 유사도로 그룹핑. **정지 배경**(하단 방송자막)에 빠르고 정확.
+- `text`: 프레임마다 OCR 후 같은 텍스트끼리 병합. **움직이는 배경 위 반투명 자막**(말하는 사람 위 숏폼 캡션)에 강함. 배경이 흔들려도 자막이 안 쪼개짐. OCR을 더 많이 해 느리지만 정확.
+  ```bash
+  TAE_GROUPING_MODE=text uvicorn app.main:app
+  ```
+  실제 숏폼 검증: 33초 영상에서 image모드는 80개로 과분할됐으나 text모드는 8개 캡션으로 정확히 묶임.
+
+### 자막 위치 (`roi_preset`, `roi_auto`)
+- `roi_preset`: `bottom`(하단·기본 방송자막) | `center`(중앙~중하단 숏폼 본문) | `top`(상단 제목) | `full`(전체) | `custom`(`roi_*_frac` 직접).
+- `roi_auto=true`: 앞부분 프레임을 OCR해 자막 밴드를 자동 추정(로컬 전용, 모델 필요).
+
 ### OCR 엔진 교체 (선택: Naver CLOVA OCR)
 
 정확도가 더 필요하면 CLOVA OCR(97~99%)로 교체할 수 있습니다.

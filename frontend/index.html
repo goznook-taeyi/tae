@@ -31,17 +31,32 @@
       <details class="advanced">
         <summary>고급 설정</summary>
         <div class="adv-grid">
+          <label>자막 위치(ROI 프리셋)
+            <select id="opt-roi-preset">
+              <option value="bottom">하단 (방송 자막)</option>
+              <option value="center">중앙~중하단 (숏폼 본문)</option>
+              <option value="top">상단 (제목)</option>
+              <option value="full">전체 (위치 모를 때)</option>
+              <option value="custom">직접 지정</option>
+            </select>
+          </label>
+          <label>그룹핑 모드
+            <select id="opt-grouping">
+              <option value="image">image (정지 배경·빠름)</option>
+              <option value="text">text (움직이는 배경·정확)</option>
+            </select>
+          </label>
+          <label class="roi-custom">자막 밴드 상단(0~1)
+            <input type="number" id="opt-roi-top" step="0.01" min="0" max="1" value="0.72" />
+          </label>
+          <label class="roi-custom">자막 밴드 하단(0~1)
+            <input type="number" id="opt-roi-bottom" step="0.01" min="0" max="1" value="1.0" />
+          </label>
           <label>초당 샘플 프레임(sample_fps)
             <input type="number" id="opt-fps" step="0.5" min="0.5" value="2" />
           </label>
-          <label>자막 밴드 상단(0~1)
-            <input type="number" id="opt-roi-top" step="0.01" min="0" max="1" value="0.72" />
-          </label>
           <label>세그먼트당 투표 프레임(K)
             <input type="number" id="opt-votes" step="1" min="1" value="5" />
-          </label>
-          <label>스티커 지속성 임계(초)
-            <input type="number" id="opt-sticker" step="1" min="1" value="8" />
           </label>
         </div>
       </details>

@@ -209,6 +209,50 @@ def _longest_stable_run(stable_flags: list[bool]) -> tuple[int, int, int]:
     return best_start, best_end, best_len
 
 
+def aggregate_text_band(
+    y_fracs: list[tuple[float, float]], pad: float = 0.03, cluster_radius: float = 0.15
+) -> tuple[float, float]:
+    """텍스트 박스들의 세로 위치(비율)에서 자막 밴드 (top, bottom)를 robust하게 추정.
+
+    y_fracs: 각 텍스트 박스의 (top_frac, bottom_frac) 목록.
+    중앙값 중심의 지배적 클러스터만 취해(상단 제목 등 이상치 제외) 밴드를 정한다.
+    """
+    if not y_fracs:
+        return (0.0, 1.0)
+    centers = [(t + b) / 2 for t, b in y_fracs]
+    median = float(np.median(centers))
+    kept = [yf for yf, c in zip(y_fracs, centers) if abs(c - median) <= cluster_radius]
+    if not kept:
+        kept = y_fracs
+    top = min(t for t, _ in kept) - pad
+    bottom = max(b for _, b in kept) + pad
+    return (max(0.0, min(top, 1.0)), max(0.0, min(bottom, 1.0)))
+
+
+def detect_subtitle_band(path: str, engine, settings, sample_n: int = 8) -> tuple[float, float]:
+    """앞부분 프레임 몇 장을 전체 OCR해 자막이 모여 있는 세로 밴드를 추정(로컬 전용, 모델 필요)."""
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        return (settings.roi_top_frac, settings.roi_bottom_frac)
+    try:
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1) or 1
+        y_fracs: list[tuple[float, float]] = []
+        n = max(1, total)
+        for k in range(sample_n):
+            fi = int(n * (k + 0.5) / sample_n)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, fi)
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            for b in engine.read_boxes(frame):
+                _, y1, _, y2 = b.bbox
+                y_fracs.append((y1 / height, y2 / height))
+        return aggregate_text_band(y_fracs)
+    finally:
+        cap.release()
+
+
 def pick_vote_frames(
     window: list[SampledFrame], k: int
 ) -> list[SampledFrame]:

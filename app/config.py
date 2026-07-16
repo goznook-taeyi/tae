@@ -23,8 +23,23 @@ class Settings(BaseSettings):
     roi_right_frac: float = Field(0.95, ge=0, le=1)
 
     # --- 세그먼트 그룹핑 ---
+    grouping_mode: str = Field(
+        "image",
+        description="'image'=이미지 유사도(정지 배경에 빠름) | 'text'=프레임마다 OCR 후 텍스트 병합(움직이는 배경에 강함)",
+    )
     image_diff_threshold: float = Field(
         0.02, ge=0, le=1, description="ROI 프레임 차이가 이 값 미만이면 같은 자막으로 그룹핑"
+    )
+    text_group_threshold: float = Field(
+        0.7, ge=0, le=1, description="text 모드: 연속 프레임 OCR 텍스트 유사도가 이 값 이상이면 같은 자막"
+    )
+
+    # --- ROI 프리셋 / 자동감지 ---
+    roi_preset: str = Field(
+        "custom", description="'bottom' | 'center' | 'top' | 'full' | 'custom'(아래 roi_*_frac 사용)"
+    )
+    roi_auto: bool = Field(
+        False, description="True면 앞부분 프레임을 OCR해 자막 밴드를 자동 추정(로컬에서만, 모델 필요)"
     )
 
     # --- 무빙 자막: 안정구간 게이트 ---
@@ -66,12 +81,27 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = Field(1, ge=1)
     upload_dir: str = Field("data/uploads")
 
+    # 프리셋 → (top, bottom, left, right) 세로/가로 비율
+    _ROI_PRESETS = {
+        "bottom": (0.72, 1.0, 0.0, 1.0),
+        "center": (0.56, 0.73, 0.02, 0.98),
+        "top": (0.08, 0.24, 0.0, 1.0),
+        "full": (0.0, 1.0, 0.0, 1.0),
+    }
+
+    def roi_fracs(self) -> tuple[float, float, float, float]:
+        """프리셋을 반영한 (top, bottom, left, right) 비율."""
+        if self.roi_preset in self._ROI_PRESETS:
+            return self._ROI_PRESETS[self.roi_preset]
+        return (self.roi_top_frac, self.roi_bottom_frac, self.roi_left_frac, self.roi_right_frac)
+
     def roi_box(self, width: int, height: int) -> tuple[int, int, int, int]:
         """(x1, y1, x2, y2) 픽셀 ROI 반환."""
-        x1 = int(round(self.roi_left_frac * width))
-        x2 = int(round(self.roi_right_frac * width))
-        y1 = int(round(self.roi_top_frac * height))
-        y2 = int(round(self.roi_bottom_frac * height))
+        top, bottom, left, right = self.roi_fracs()
+        x1 = int(round(left * width))
+        x2 = int(round(right * width))
+        y1 = int(round(top * height))
+        y2 = int(round(bottom * height))
         # 최소 1px 보장
         x2 = max(x2, x1 + 1)
         y2 = max(y2, y1 + 1)

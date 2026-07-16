@@ -68,6 +68,18 @@ def test_pipeline_end_to_end(tmp_path):
         assert os.path.exists(os.path.join(thumb_dir, s.thumbnail_url))
 
 
+def test_pipeline_text_mode(tmp_path):
+    """text 그룹핑 모드도 세그먼트를 만들고 오타를 검출한다 (프레임마다 OCR→텍스트 병합)."""
+    clip = str(tmp_path / "clip.mp4")
+    _make_two_segment_clip(clip)
+    settings = Settings(sample_fps=2.0, grouping_mode="text")
+    result = analyze_video(clip, ColorAwareOCR(), TypoChecker(), settings, str(tmp_path / "t"))
+    assert result.segment_count == 2
+    suspect = [s for s in result.segments if s.status == SegmentStatus.SUSPECT]
+    assert len(suspect) == 1
+    assert suspect[0].spelling_issues[0].suggestion == "좋네요"
+
+
 def test_pipeline_graceful_spellcheck_failure(tmp_path):
     from app.spellcheck import SpellCheckError, SpellChecker
 

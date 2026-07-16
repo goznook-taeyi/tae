@@ -66,10 +66,14 @@ class JobStore:
             for k, v in fields.items():
                 setattr(job, k, v)
 
-    def submit(self, job_id: str, video_path: str, thumb_dir: str) -> None:
-        self._executor.submit(self._run, job_id, video_path, thumb_dir)
+    def submit(
+        self, job_id: str, video_path: str, thumb_dir: str, overrides: dict | None = None
+    ) -> None:
+        self._executor.submit(self._run, job_id, video_path, thumb_dir, overrides or {})
 
-    def _run(self, job_id: str, video_path: str, thumb_dir: str) -> None:
+    def _run(
+        self, job_id: str, video_path: str, thumb_dir: str, overrides: dict
+    ) -> None:
         with self._semaphore:
             self._update(job_id, status="running", message="처리 시작")
 
@@ -79,11 +83,14 @@ class JobStore:
             try:
                 engine = self._get_engine()
                 checker = self._get_checker()
+                job_settings = (
+                    self.settings.model_copy(update=overrides) if overrides else self.settings
+                )
                 result = analyze_video(
                     video_path,
                     engine,
                     checker,
-                    self.settings,
+                    job_settings,
                     thumb_dir,
                     progress_cb=progress,
                 )

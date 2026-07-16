@@ -28,6 +28,15 @@ function setFile(f) {
   $("analyze-btn").disabled = false;
 }
 
+// --- ROI 프리셋: custom일 때만 상/하 입력 표시 ---
+const roiPreset = $("opt-roi-preset");
+function toggleRoiCustom() {
+  const show = roiPreset.value === "custom";
+  document.querySelectorAll(".roi-custom").forEach((e) => (e.style.display = show ? "" : "none"));
+}
+roiPreset.addEventListener("change", toggleRoiCustom);
+toggleRoiCustom();
+
 // --- 분석 시작 ---
 $("analyze-btn").addEventListener("click", startAnalyze);
 
@@ -40,6 +49,14 @@ async function startAnalyze() {
 
   const form = new FormData();
   form.append("file", selectedFile);
+  form.append("roi_preset", $("opt-roi-preset").value);
+  form.append("grouping_mode", $("opt-grouping").value);
+  form.append("sample_fps", $("opt-fps").value);
+  form.append("votes_per_segment", $("opt-votes").value);
+  if ($("opt-roi-preset").value === "custom") {
+    form.append("roi_top_frac", $("opt-roi-top").value);
+    form.append("roi_bottom_frac", $("opt-roi-bottom").value);
+  }
 
   let res;
   try {

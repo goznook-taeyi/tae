@@ -1,7 +1,31 @@
 # 온라인 배포 가이드 — 팀원들에게 공유하기
 
 Hugging Face Spaces(무료)에 올려서 팀원들이 **브라우저로 바로 쓰는** 온라인 버전을 만드는 방법입니다.
-전체 과정은 10분(+ 빌드 대기 10~20분)이면 끝납니다. **내 PC에서** 진행하세요.
+
+## 방법 A: 터미널 없이 배포 (추천 — 브라우저만 사용)
+
+GitHub Actions가 대신 배포합니다. 브라우저에서 딱 3가지만 하면 됩니다:
+
+1. **HF 가입 + 토큰 발급**
+   - https://huggingface.co/join 무료 가입
+   - https://huggingface.co/settings/tokens → New token → 권한 **Write** → 생성 → `hf_...` 복사
+2. **GitHub 저장소에 시크릿 2개 등록**
+   - 저장소 페이지 → **Settings → Secrets and variables → Actions → New repository secret**
+   - `HF_TOKEN` = 위에서 복사한 `hf_...`
+   - `APP_PASSWORD` = 팀 공유 접속 비밀번호 (원하는 값)
+   - (선택) 같은 화면 **Variables** 탭에 `HF_SPACE` = `HF계정명/subtitle-checker`
+3. **워크플로 실행**
+   - 저장소 → **Actions → "Deploy to Hugging Face Space" → Run workflow** (space 입력칸에 `HF계정명/subtitle-checker`)
+   - 또는 Claude 세션에 "시크릿 등록했어, 배포 실행해줘"라고 말하면 원격으로 실행·모니터링해 드립니다.
+
+완료되면 사이트 주소: **`https://huggingface.co/spaces/HF계정명/subtitle-checker`**
+(첫 빌드 10~20분 후 접속 가능. 팀에는 이 URL + 비밀번호만 공유.)
+
+---
+
+## 방법 B: 내 PC 터미널에서 직접 배포
+
+전체 과정은 10분(+ 빌드 대기 10~20분)이면 끝납니다.
 
 ## 1. Hugging Face 계정 준비 (처음 한 번만)
 1. https://huggingface.co/join 에서 무료 가입

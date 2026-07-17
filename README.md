@@ -109,7 +109,8 @@ export CLOVA_OCR_SECRET="<X-OCR-SECRET>"
 
 ### hanspell 안정성 참고
 
-기본 맞춤법 엔진 **py-hanspell**은 네이버 맞춤법 검사기 엔드포인트에 의존해 간헐적으로 실패할 수 있습니다.
+기본 맞춤법 엔진 **hanspell**(ssut/py-hanspell, MIT — 원본 패키지 설치가 깨져 있어 `./hanspell/`에 내장)은
+네이버 맞춤법 검사기 엔드포인트에 의존해 간헐적으로 실패할 수 있습니다.
 네이버가 엔드포인트/토큰 정책을 바꾸면 **passport 토큰 패치**가 필요할 수 있습니다
 (패키지의 `hanspell/base.py`의 `payload`/`passportKey` 부분).
 호출은 지수 백오프로 재시도하고, 실패해도 세그먼트 단위로 격리되어 **전체 실행은 계속**되며 경고로 표시됩니다.

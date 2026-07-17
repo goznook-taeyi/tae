@@ -1,7 +1,24 @@
 # 로컬 실행 가이드 (내 PC에서 실제 영상 테스트하기)
 
 이 도구는 클라우드가 아니라 **내 PC에서 실행**할 때 진짜 PaddleOCR로 동작합니다.
-(클라우드 컨테이너는 보안 정책상 OCR 모델 다운로드가 막혀 있습니다. 내 PC엔 그런 제한이 없습니다.)
+
+## ⚡ 빠른 시작 (터미널 없이 — 더블클릭)
+
+1. **Python 설치** (없다면): https://www.python.org/downloads/
+   - Windows 설치 시 **"Add python.exe to PATH" 체크 필수!**
+2. **코드 받기**: GitHub 저장소 → 초록색 **Code ▾ → Download ZIP** → 압축 해제
+   (또는 브랜치 ZIP: `https://github.com/goznook-taeyi/tae/archive/refs/heads/claude/video-subtitle-audio-analysis-c0lhnh.zip`)
+3. **실행**:
+   - Windows: 폴더 안 **`start_windows.bat`** 더블클릭
+   - macOS: **`start_mac.command`** 우클릭 → 열기 (최초 1회만 우클릭 필요)
+4. 최초 실행 시 필요한 패키지를 자동 설치합니다(수 분, OCR 엔진이 큼). 끝나면 브라우저가 자동으로 열립니다.
+5. 영상을 끌어다 놓고 **분석 시작**. ※ 첫 분석은 한국어 OCR 모델을 내려받아 몇 분 더 걸립니다.
+
+> 숏폼(자막이 화면 중앙)이면 **고급 설정 → 자막 위치 "중앙~중하단" + 그룹핑 "text"** 를 선택하세요.
+
+---
+
+## 터미널로 직접 설치 (개발자용)
 
 아래를 그대로 복사해서 터미널에 붙여넣으면 됩니다. 5분이면 끝납니다.
 

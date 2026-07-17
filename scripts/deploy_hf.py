@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 UPLOAD_ITEMS = [
     ("app", "app"),
     ("frontend", "frontend"),
+    ("hanspell", "hanspell"),
     ("Dockerfile", "Dockerfile"),
     ("requirements.txt", "requirements.txt"),
     ("deploy/README_SPACE.md", "README.md"),

@@ -8,7 +8,7 @@ FROM python:3.11-slim
 
 # opencv-python-headless 런타임 의존성
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 libgomp1 git \
+    libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # HF 규격: UID 1000 비루트 사용자
@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 COPY --chown=user app/ ./app/
 COPY --chown=user frontend/ ./frontend/
+COPY --chown=user hanspell/ ./hanspell/
 
 # 한국어 OCR 모델을 이미지에 베이킹 (렌더한 한글 이미지로 전체 파이프라인 워밍)
 RUN python -c "\

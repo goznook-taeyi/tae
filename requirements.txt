@@ -18,7 +18,7 @@ paddleocr>=2.7
 paddlepaddle>=2.6
 
 # Spell check + similarity + HTTP (hanspell / CLOVA)
-py-hanspell @ git+https://github.com/ssut/py-hanspell.git@471809d55f9d3d2b843b4d770f5d0e9280e8be3d
+# 참고: py-hanspell은 PyPI/설치가 깨져 있어 저장소에 직접 내장(vendored)했다 → ./hanspell/ (MIT, ssut/py-hanspell)
 python-Levenshtein>=0.25
 requests>=2.31
 

@@ -35,7 +35,9 @@ UPLOAD_ITEMS = [
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="HF Spaces 배포")
-    parser.add_argument("--space", required=True, help="예: myaccount/subtitle-checker")
+    parser.add_argument(
+        "--space", default=None, help="예: myaccount/subtitle-checker (생략 시 <내계정>/subtitle-checker)"
+    )
     parser.add_argument("--password", required=True, help="팀 공유 비밀번호(APP_PASSWORD)")
     parser.add_argument("--private", action="store_true", help="Space를 비공개로 생성(HF 계정 있는 팀원만)")
     args = parser.parse_args()
@@ -54,6 +56,10 @@ def main() -> int:
         print("HF 토큰이 없습니다. `huggingface-cli login` 또는 HF_TOKEN 환경변수를 설정하세요.")
         print("토큰 발급: https://huggingface.co/settings/tokens (write 권한)")
         return 1
+
+    if not args.space:
+        args.space = f"{who['name']}/subtitle-checker"
+        print(f"Space 이름 자동 설정: {args.space}")
 
     print(f"Space 생성/확인: {args.space}")
     api.create_repo(

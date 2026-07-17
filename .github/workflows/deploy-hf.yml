@@ -9,7 +9,17 @@ on:
   workflow_dispatch:
     inputs:
       space:
-        description: "HF Space 이름 (계정/이름). 비우면 HF_SPACE 변수 사용"
+        description: "HF Space 이름 (계정/이름). 비우면 HF_SPACE 변수 또는 <계정>/subtitle-checker"
+        required: false
+        type: string
+      # 주의: 실행 입력은 저장소 접근자에게 노출될 수 있음 — 정식 경로는 Secrets 등록.
+      # 시크릿 미설정 상태에서의 1회성 배포용 임시 수단.
+      hf_token:
+        description: "(임시) HF Write 토큰 — HF_TOKEN 시크릿이 없을 때만 사용"
+        required: false
+        type: string
+      app_password:
+        description: "(임시) 팀 접속 비밀번호 — APP_PASSWORD 시크릿이 없을 때만 사용"
         required: false
         type: string
 
@@ -28,23 +38,25 @@ jobs:
 
       - name: Check configuration
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
-          SPACE: ${{ inputs.space || vars.HF_SPACE }}
+          HF_TOKEN: ${{ inputs.hf_token || secrets.HF_TOKEN }}
+          APP_PASSWORD: ${{ inputs.app_password || secrets.APP_PASSWORD }}
         run: |
           missing=0
-          if [ -z "$HF_TOKEN" ]; then echo "::error::HF_TOKEN 시크릿이 없습니다. Settings → Secrets and variables → Actions에서 추가하세요. (huggingface.co/settings/tokens 에서 Write 토큰 발급)"; missing=1; fi
-          if [ -z "$APP_PASSWORD" ]; then echo "::error::APP_PASSWORD 시크릿이 없습니다. 팀 공유 비밀번호를 시크릿으로 추가하세요."; missing=1; fi
-          if [ -z "$SPACE" ]; then echo "::error::Space 이름이 없습니다. 실행 입력(space) 또는 HF_SPACE 변수(예: myaccount/subtitle-checker)를 설정하세요."; missing=1; fi
+          if [ -z "$HF_TOKEN" ]; then echo "::error::HF 토큰이 없습니다. HF_TOKEN 시크릿을 추가하거나 실행 입력 hf_token을 넘기세요. (huggingface.co/settings/tokens 에서 Write 토큰 발급)"; missing=1; fi
+          if [ -z "$APP_PASSWORD" ]; then echo "::error::접속 비밀번호가 없습니다. APP_PASSWORD 시크릿을 추가하거나 실행 입력 app_password를 넘기세요."; missing=1; fi
           exit $missing
 
       - name: Deploy
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ inputs.hf_token || secrets.HF_TOKEN }}
           SPACE: ${{ inputs.space || vars.HF_SPACE }}
-          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          APP_PASSWORD: ${{ inputs.app_password || secrets.APP_PASSWORD }}
         run: |
-          python scripts/deploy_hf.py --space "$SPACE" --password "$APP_PASSWORD"
+          if [ -n "$SPACE" ]; then
+            python scripts/deploy_hf.py --space "$SPACE" --password "$APP_PASSWORD"
+          else
+            python scripts/deploy_hf.py --password "$APP_PASSWORD"
+          fi
 
       - name: Result
         env:
@@ -52,5 +64,5 @@ jobs:
         run: |
           echo "### 배포 요청 완료 🚀" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Space: https://huggingface.co/spaces/$SPACE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Space: https://huggingface.co/spaces/${SPACE:-<계정>/subtitle-checker}" >> "$GITHUB_STEP_SUMMARY"
           echo "- 첫 빌드는 10~20분 걸립니다 (OCR 모델 베이킹). Space 페이지의 Logs 탭에서 진행 확인." >> "$GITHUB_STEP_SUMMARY"

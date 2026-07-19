@@ -49,6 +49,18 @@ FIGURES = {
   </div>
   <figcaption>한 편의 여정 — 이 장은 이 타임라인을 그대로 따라간다</figcaption>
 </figure>""",
+    "<!-- FIGURE:illus-shoot -->": """
+<figure class="fig fig-illus">
+  <img src="https://d8j0ntlcm91z4.cloudfront.net/user_2x8dJEtgSGKSoPfI65Ei5No8beK/hf_20260719_090259_000a0a01-39cb-456d-a182-d055cdf28787.png"
+       alt="원장실 촬영 장면 일러스트 — 카메라 앞의 의사와 모니터 뒤의 PD" loading="lazy">
+  <figcaption>원장실, 촬영 세 번째 컷 — 대본에 없는 질문이 훅이 되는 순간</figcaption>
+</figure>""",
+    "<!-- FIGURE:illus-edit -->": """
+<figure class="fig fig-illus">
+  <img src="https://d8j0ntlcm91z4.cloudfront.net/user_2x8dJEtgSGKSoPfI65Ei5No8beK/hf_20260719_090305_4d33701a-9c96-4025-a7de-fe3c9bdea454.png"
+       alt="편집 데스크 일러스트 — 타임라인 화면과 체크리스트" loading="lazy">
+  <figcaption>검수는 타임라인을 눈으로 훑는 일이다 — 체크리스트가 그 눈을 만든다</figcaption>
+</figure>""",
 }
 for marker, fig in FIGURES.items():
     html_body = html_body.replace(marker, fig)
@@ -232,6 +244,8 @@ td{font-variant-numeric:tabular-nums}
 .ph-safe{position:absolute; bottom:0; height:20%; width:100%; display:flex; align-items:center; justify-content:center; text-align:center; font-size:.64rem; color:var(--muted); padding:0 10px;
   border-top:1.5px dashed var(--muted);
   background:repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--muted) 16%, transparent) 6px 12px)}
+.fig-illus img{display:block; width:100%; max-width:100%; border-radius:14px; border:1px solid var(--line)}
+.fig-illus img:not([src]),.fig-illus img[src=""]{display:none}
 """
 
 out = f"""<title>병원 숏폼으로 먹고삽니다 — 초안 v0.3 리딩본</title>

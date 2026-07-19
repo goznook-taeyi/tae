@@ -14,8 +14,61 @@ md_src = "\n\n".join((ROOT / f).read_text(encoding="utf-8") for f in FILES)
 # 체크박스 표기 → 마커 (스타일은 CSS에서)
 md_src = md_src.replace("- [ ] ", "- CHKBOX ")
 
-html_body = markdown.markdown(md_src, extensions=["tables", "toc"])
+html_body = markdown.markdown(md_src, extensions=["tables", "toc", "fenced_code"])
+
+FIGURES = {
+    "<!-- FIGURE:videostructure -->": """
+<figure class="fig">
+  <div class="timeline-bar">
+    <div class="seg seg-hook"><b>훅 0–3초</b><small>클라이맥스 예고편</small></div>
+    <div class="seg seg-main"><b>메인</b><small>통념 교정 → 원리 → 방식·이유 → 한계·개인차</small></div>
+    <div class="seg seg-cta"><b>CTA</b><small>행동 1개</small></div>
+  </div>
+  <figcaption>기획안 한 줄이 펼쳐지는 35~40초의 구조 — 길이는 상한이지 목표가 아니다</figcaption>
+</figure>""",
+    "<!-- FIGURE:phone -->": """
+<figure class="fig">
+  <div class="phone">
+    <div class="ph-point">(3시간째 상담 중)</div>
+    <div class="ph-big">양이 아니라 <em>위치</em>가 정합니다</div>
+    <div class="ph-say">입술은 0.1cc 차이로 인상이 바뀌는 부위예요</div>
+    <div class="ph-safe">하단 20% · 플랫폼 UI 세이프존 — 비워 둔다</div>
+  </div>
+  <figcaption>자막 3종의 화면 배치 — 위부터 포인트 「소」 · 강조 「대」(중앙) · 말 「중」.<br>음소거로 재생해도 셋이 눈으로 구분되면 통과다</figcaption>
+</figure>""",
+    "<!-- FIGURE:anatomy-timeline -->": """
+<figure class="fig">
+  <div class="flow">
+    <div class="flow-step"><b>D-14</b><span>기획 회의</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>D-13</b><span>병원 컨펌</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>D-7</b><span>촬영 12분</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>D-5</b><span>편집 배정</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>D-3</b><span>검수 3건 적발</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>D-2</b><span>피드백 번역</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>D-Day</b><span>업로드</span></div>
+  </div>
+  <figcaption>한 편의 여정 — 이 장은 이 타임라인을 그대로 따라간다</figcaption>
+</figure>""",
+}
+for marker, fig in FIGURES.items():
+    html_body = html_body.replace(marker, fig)
+
 soup = BeautifulSoup(html_body, "html.parser")
+
+# 파이프라인 ASCII 블록 → 흐름도
+for pre in soup.find_all("pre"):
+    if "① 소싱" in pre.get_text():
+        fig = BeautifulSoup("""
+<figure class="fig">
+  <div class="flow">
+    <div class="flow-step"><b>① 소싱</b><span>레퍼런스 수집</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>② 솔팅</b><span>쓸 것 선별</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>③ 제작</b><span>캡컷 편집</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>④ 검수</b><span>규격·톤 확인</span></div><div class="flow-arrow">→</div>
+    <div class="flow-step"><b>⑤ 납품</b><span>완성본 업로드</span></div>
+  </div>
+</figure>""", "html.parser")
+        pre.replace_with(fig)
 
 # 1) 체크리스트 항목
 for li in soup.find_all("li"):
@@ -157,6 +210,28 @@ td{font-variant-numeric:tabular-nums}
   .card{transition:border-color .15s ease}
   .card:hover{border-color:var(--accent)}
 }
+.fig{margin:2rem 0}
+.fig figcaption{text-align:center; color:var(--muted); font-size:.8rem; margin-top:.75rem; line-height:1.6}
+.flow{display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center}
+.flow-step{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:.5rem .75rem; text-align:center; display:flex; flex-direction:column; gap:.1rem; min-width:84px}
+.flow-step b{font-size:.86rem; color:var(--ink); font-family:inherit}
+.flow-step span{font-size:.72rem; color:var(--muted)}
+.flow-arrow{color:var(--accent); font-weight:700}
+.timeline-bar{display:flex; border-radius:10px; overflow:hidden; text-align:center}
+.seg{padding:.65rem .4rem; color:#fff; display:flex; flex-direction:column; gap:.1rem; justify-content:center}
+.seg b{font-size:.85rem} .seg small{font-size:.68rem; opacity:.85}
+.seg-hook{background:var(--accent); width:21%}
+.seg-main{background:color-mix(in srgb, var(--accent) 55%, var(--ink)); flex:1}
+.seg-cta{background:color-mix(in srgb, var(--accent) 30%, var(--ink)); width:16%}
+.phone{position:relative; aspect-ratio:9/16; max-width:250px; margin:0 auto; border:2px solid var(--line); border-radius:22px; overflow:hidden; font-size:.8rem;
+  background:linear-gradient(165deg, color-mix(in srgb, var(--accent) 14%, var(--card)), var(--card) 70%)}
+.ph-point{position:absolute; top:13%; left:9%; color:var(--muted); font-size:.7rem}
+.ph-big{position:absolute; top:40%; width:100%; text-align:center; font-weight:900; font-size:1.08rem; padding:0 14px; color:var(--ink); line-height:1.45}
+.ph-big em{font-style:normal; color:var(--accent)}
+.ph-say{position:absolute; bottom:23%; width:100%; text-align:center; font-size:.76rem; color:var(--ink); padding:0 14px}
+.ph-safe{position:absolute; bottom:0; height:20%; width:100%; display:flex; align-items:center; justify-content:center; text-align:center; font-size:.64rem; color:var(--muted); padding:0 10px;
+  border-top:1.5px dashed var(--muted);
+  background:repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--muted) 16%, transparent) 6px 12px)}
 """
 
 out = f"""<title>병원 숏폼으로 먹고삽니다 — 초안 v0.3 리딩본</title>

@@ -80,6 +80,28 @@ td{font-variant-numeric:tabular-nums}
   .card{transition:border-color .15s ease}
   .card:hover{border-color:var(--accent)}
 }
+.fig{margin:2rem 0}
+.fig figcaption{text-align:center; color:var(--muted); font-size:.8rem; margin-top:.75rem; line-height:1.6}
+.flow{display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center}
+.flow-step{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:.5rem .75rem; text-align:center; display:flex; flex-direction:column; gap:.1rem; min-width:84px}
+.flow-step b{font-size:.86rem; color:var(--ink); font-family:inherit}
+.flow-step span{font-size:.72rem; color:var(--muted)}
+.flow-arrow{color:var(--accent); font-weight:700}
+.timeline-bar{display:flex; border-radius:10px; overflow:hidden; text-align:center}
+.seg{padding:.65rem .4rem; color:#fff; display:flex; flex-direction:column; gap:.1rem; justify-content:center}
+.seg b{font-size:.85rem} .seg small{font-size:.68rem; opacity:.85}
+.seg-hook{background:var(--accent); width:21%}
+.seg-main{background:color-mix(in srgb, var(--accent) 55%, var(--ink)); flex:1}
+.seg-cta{background:color-mix(in srgb, var(--accent) 30%, var(--ink)); width:16%}
+.phone{position:relative; aspect-ratio:9/16; max-width:250px; margin:0 auto; border:2px solid var(--line); border-radius:22px; overflow:hidden; font-size:.8rem;
+  background:linear-gradient(165deg, color-mix(in srgb, var(--accent) 14%, var(--card)), var(--card) 70%)}
+.ph-point{position:absolute; top:13%; left:9%; color:var(--muted); font-size:.7rem}
+.ph-big{position:absolute; top:40%; width:100%; text-align:center; font-weight:900; font-size:1.08rem; padding:0 14px; color:var(--ink); line-height:1.45}
+.ph-big em{font-style:normal; color:var(--accent)}
+.ph-say{position:absolute; bottom:23%; width:100%; text-align:center; font-size:.76rem; color:var(--ink); padding:0 14px}
+.ph-safe{position:absolute; bottom:0; height:20%; width:100%; display:flex; align-items:center; justify-content:center; text-align:center; font-size:.64rem; color:var(--muted); padding:0 10px;
+  border-top:1.5px dashed var(--muted);
+  background:repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--muted) 16%, transparent) 6px 12px)}
 </style>
 <div class="page">
 <h1 id="_1">병원 숏폼으로 먹고삽니다</h1>
@@ -216,6 +238,14 @@ td{font-variant-numeric:tabular-nums}
 </tr>
 </tbody>
 </table></div>
+<figure class="fig">
+<div class="timeline-bar">
+<div class="seg seg-hook"><b>훅 0–3초</b><small>클라이맥스 예고편</small></div>
+<div class="seg seg-main"><b>메인</b><small>통념 교정 → 원리 → 방식·이유 → 한계·개인차</small></div>
+<div class="seg seg-cta"><b>CTA</b><small>행동 1개</small></div>
+</div>
+<figcaption>기획안 한 줄이 펼쳐지는 35~40초의 구조 — 길이는 상한이지 목표가 아니다</figcaption>
+</figure>
 <p>이 표 한 줄이 숏폼 한 편이다. 월 15편 계약이면 15줄. 촬영일 하루에 몰아 찍으려면 장소별로 정렬한다 — 로비 4편, 상담실 6편, 시술실 3편, 원장실 2편. <strong>촬영장소가 첫 열인 이유는 미학이 아니라 물류다.</strong></p>
 <h2 id="_14">각 열의 설계 원리</h2>
 <p><strong>상단 질문 — 검색이 아니라 고민을 적는다.</strong> "팔자주름 필러"가 아니라 "30대 중반인데 팔자주름이 점점 깊어져요. 어떤 걸 하면 좋을까요?"라고 쓴다. 시청자가 상담실에서 실제로 하는 말을 그대로 화면 상단에 박는 것이다. 자기 고민과 같은 문장을 본 시청자는 스크롤을 멈춘다.</p>
@@ -271,8 +301,16 @@ td{font-variant-numeric:tabular-nums}
 <h2 id="_18">"열심히"가 무너지는 날</h2>
 <p>물량이 적을 때는 시스템이 필요 없다. 잘하는 사람이 열심히 하면 된다. 문제는 계약이 늘어나는 순간이다. 병원 다섯 곳, 월 수십 편, 편집자는 프리랜서 여러 명. 어느 날 문득 깨닫는다 — 지금 어떤 영상이 어디까지 갔는지 아는 사람이 나뿐이고, 나는 그걸 머리로 기억하고 있다.</p>
 <p>그날이 시스템을 만드는 날이다. 우리는 모든 작업을 다섯 단계로 자른다.</p>
-<p><code>① 소싱 → ② 솔팅 → ③ 제작 → ④ 검수 → ⑤ 납품
-(레퍼런스 수집) (쓸 것 선별) (편집) (규격·톤 확인) (완성본 업로드)</code></p>
+
+<figure class="fig">
+<div class="flow">
+<div class="flow-step"><b>① 소싱</b><span>레퍼런스 수집</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>② 솔팅</b><span>쓸 것 선별</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>③ 제작</b><span>캡컷 편집</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>④ 검수</b><span>규격·톤 확인</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>⑤ 납품</b><span>완성본 업로드</span></div>
+</div>
+</figure>
 <h2 id="_19">각 단계의 정의와 완료 기준</h2>
 <p>단계를 나누는 것보다 중요한 게 <strong>완료 기준</strong>이다. "끝났다"의 정의가 사람마다 다르면 단계는 장식이다.</p>
 <div class="table-wrap"><table>
@@ -337,6 +375,15 @@ td{font-variant-numeric:tabular-nums}
 <h2 id="_23">전부 강조하면 아무것도 강조되지 않는다</h2>
 <p>숏폼의 대부분은 음소거 상태로 소비되기 시작한다. 자막은 장식이 아니라 제1 음성이다. 그런데 신입 편집자의 화면은 대개 이렇다: 모든 자막이 크고, 모든 자막이 노랗고, 모든 자막이 튄다. 그 결과는? 아무것도 눈에 안 들어온다.</p>
 <p>우리는 자막을 세 종류로 강제 분리한다. 각각 역할이 다르고, 역할이 다르니 생김새가 달라야 한다.</p>
+<figure class="fig">
+<div class="phone">
+<div class="ph-point">(3시간째 상담 중)</div>
+<div class="ph-big">양이 아니라 <em>위치</em>가 정합니다</div>
+<div class="ph-say">입술은 0.1cc 차이로 인상이 바뀌는 부위예요</div>
+<div class="ph-safe">하단 20% · 플랫폼 UI 세이프존 — 비워 둔다</div>
+</div>
+<figcaption>자막 3종의 화면 배치 — 위부터 포인트 「소」 · 강조 「대」(중앙) · 말 「중」.<br/>음소거로 재생해도 셋이 눈으로 구분되면 통과다</figcaption>
+</figure>
 <div class="cards"><article class="card"><div class="card-head"></div><div class="card-body"><div class="field"><span class="field-label"></span><span class="field-value"><strong>말자막 「중」</strong></span></div><div class="field"><span class="field-label">역할</span><span class="field-value">정보 — 대사 전달</span></div><div class="field"><span class="field-label">크기(화면 폭 대비)</span><span class="field-value">7~8%</span></div><div class="field"><span class="field-label">색</span><span class="field-value">흰색+검정 테두리</span></div><div class="field"><span class="field-label">위치</span><span class="field-value">하단 20% 경계 위</span></div><div class="field"><span class="field-label">움직임</span><span class="field-value">없음</span></div></div></article><article class="card"><div class="card-head"></div><div class="card-body"><div class="field"><span class="field-label"></span><span class="field-value"><strong>강조자막 「대」</strong></span></div><div class="field"><span class="field-label">역할</span><span class="field-value">기억 — 핵심 메시지</span></div><div class="field"><span class="field-label">크기(화면 폭 대비)</span><span class="field-value">12~15% (말자막의 1.8배)</span></div><div class="field"><span class="field-label">색</span><span class="field-value">포인트 1색, 핵심 단어만</span></div><div class="field"><span class="field-label">위치</span><span class="field-value">중앙</span></div><div class="field"><span class="field-label">움직임</span><span class="field-value">팝 인 0.2초 (유일하게 허용)</span></div></div></article><article class="card"><div class="card-head"></div><div class="card-body"><div class="field"><span class="field-label"></span><span class="field-value"><strong>포인트자막 「소」</strong></span></div><div class="field"><span class="field-label">역할</span><span class="field-value">호감 — (당황), (3시간째)</span></div><div class="field"><span class="field-label">크기(화면 폭 대비)</span><span class="field-value">4~5%</span></div><div class="field"><span class="field-label">색</span><span class="field-value">흰색 또는 저채도</span></div><div class="field"><span class="field-label">위치</span><span class="field-value">자유 (세이프존 침범 금지)</span></div><div class="field"><span class="field-label">움직임</span><span class="field-value">없음</span></div></div></article></div>
 <p>설계 원리는 세 가지다.</p>
 <ul>
@@ -419,6 +466,18 @@ td{font-variant-numeric:tabular-nums}
 <blockquote>
 <p>PART 2까지 읽었다면 부품은 다 봤다. 이제 조립을 보자. 실제 한 편이 기획안의 한 줄에서 업로드까지 가는 과정을, 시간 순서 그대로, 실수와 수정까지 포함해서 따라간다. 사례는 강남의 A의원(피부·성형) — 입술 시술로 이름난 곳이고, 원장의 캐릭터는 "디테일 장인"으로 설계돼 있다. 세부 묘사는 각색됐지만 공정과 판단은 실제 그대로다.</p>
 </blockquote>
+<figure class="fig">
+<div class="flow">
+<div class="flow-step"><b>D-14</b><span>기획 회의</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>D-13</b><span>병원 컨펌</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>D-7</b><span>촬영 12분</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>D-5</b><span>편집 배정</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>D-3</b><span>검수 3건 적발</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>D-2</b><span>피드백 번역</span></div><div class="flow-arrow">→</div>
+<div class="flow-step"><b>D-Day</b><span>업로드</span></div>
+</div>
+<figcaption>한 편의 여정 — 이 장은 이 타임라인을 그대로 따라간다</figcaption>
+</figure>
 <h2 id="d-14-30">D-14, 월요일 오전 — 기획 회의, 30분</h2>
 <p>한 달치 기획 회의는 항상 같은 질문으로 시작한다.</p>
 <p>"이번 달 상담실에서 제일 많이 나온 질문 뭐예요?"</p>

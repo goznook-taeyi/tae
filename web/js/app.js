@@ -82,6 +82,10 @@
         "정통 8체질 진단은 <strong>맥진(脈診)</strong>에 기반합니다. 이 자가검진은 " +
         "경향성을 참고하기 위한 도구이며 <strong>의료 진단이 아닙니다</strong>. " +
         "몸의 실제 반응과 전문의의 감별을 함께 참고하세요." +
+      "</div>" +
+      '<div class="more-row">' +
+        '<a class="more-link" href="#/about"><b>📚 학술적 배경</b><span>진단 원리·근거·한계와 참고문헌</span></a>' +
+        '<a class="more-link" href="#/faq"><b>❓ 자주 묻는 질문</b><span>체질이 바뀌나? 자가검진은 믿을만한가?</span></a>' +
       "</div>";
   }
   function infoItem(h, p) {
@@ -112,6 +116,12 @@
     var isLast = i === QUESTIONS.length - 1;
     var nextLabel = isLast ? "결과 보기" : "다음";
 
+    var catMeta = (typeof QUESTION_CATEGORIES !== "undefined" && q.cat) ? QUESTION_CATEGORIES[q.cat] : null;
+    var catHtml = catMeta
+      ? '<div class="q-cat"><span class="cat-chip">' + esc(catMeta.label) + "</span>" +
+        (catMeta.hint ? '<span class="cat-hint">' + esc(catMeta.hint) + "</span>" : "") + "</div>"
+      : "";
+
     view.innerHTML =
       '<div class="quiz-top">' +
         '<span class="quiz-count">질문 ' + (i + 1) + " / " + QUESTIONS.length + "</span>" +
@@ -120,6 +130,7 @@
       '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><i style="width:' + pct + '%"></i></div>' +
 
       '<div class="card question">' +
+        catHtml +
         "<h2>" + esc(q.text) + "</h2>" +
         '<div class="options">' + opts + "</div>" +
       "</div>" +
@@ -198,6 +209,7 @@
         '<div class="organ-row">' +
           '<span class="organ-pill">강한 장기 <b>' + esc(c.strong) + "</b></span>" +
           '<span class="organ-pill">약한 장기 <b>' + esc(c.weak) + "</b></span>" +
+          (c.autonomic ? '<span class="organ-pill">자율신경 <b>' + esc(c.autonomic) + "</b></span>" : "") +
         "</div>" +
         '<p class="summary">' + esc(c.summary) + "</p>" +
         (closeSecond
@@ -325,6 +337,7 @@
         '<div class="organ-row">' +
           '<span class="organ-pill">강한 장기 <b>' + esc(c.strong) + "</b></span>" +
           '<span class="organ-pill">약한 장기 <b>' + esc(c.weak) + "</b></span>" +
+          (c.autonomic ? '<span class="organ-pill">자율신경 <b>' + esc(c.autonomic) + "</b></span>" : "") +
         "</div>" +
         '<p class="summary">' + esc(c.summary) + "</p>" +
       "</div>" +
@@ -336,11 +349,70 @@
   }
 
   // ============================================================
+  //  뷰: 학술적 배경 · 참고문헌 (#/about)
+  // ============================================================
+  function renderAbout() {
+    if (typeof ACADEMIC === "undefined") { location.hash = "#/"; return; }
+
+    var facts = ACADEMIC.facts.map(function (f) {
+      return '<div class="card card-pad fact"><h3 class="section-title">' + esc(f.title) + "</h3>" +
+        "<p>" + esc(f.body) + "</p></div>";
+    }).join("");
+
+    var autoCards = (typeof AUTONOMIC_GROUPS !== "undefined")
+      ? Object.keys(AUTONOMIC_GROUPS).map(function (k) {
+          var g = AUTONOMIC_GROUPS[k];
+          return '<div class="auto-card"><h4>' + esc(k) + ' <span class="en">' + esc(g.en) + "</span></h4>" +
+            '<div class="chips">' + g.members.map(function (m) { return '<span class="chip good">' + esc(m) + "</span>"; }).join("") + "</div>" +
+            "<p>" + esc(g.note) + "</p></div>";
+        }).join("")
+      : "";
+
+    var refs = (typeof REFERENCES !== "undefined")
+      ? REFERENCES.map(function (r) {
+          return '<li><a href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer">' + esc(r.title) + "</a>" +
+            (r.meta ? '<span class="ref-meta">' + esc(r.meta) + "</span>" : "") + "</li>";
+        }).join("")
+      : "";
+
+    view.innerHTML =
+      '<div class="ref-head"><h1>학술적 배경</h1><p>8체질의학은 어떤 근거 위에 있고, 자가검진은 어디까지 믿을 수 있을까요?</p></div>' +
+      '<div class="card card-pad" style="margin-top:16px"><p style="margin:0">' + esc(ACADEMIC.intro) + "</p></div>" +
+      facts +
+      (autoCards ? '<div class="card card-pad"><h3 class="section-title">🧭 자율신경에 따른 두 계통</h3><div class="auto-grid">' + autoCards + "</div></div>" : "") +
+      (refs ? '<div class="card card-pad"><h3 class="section-title">📚 참고문헌</h3><ul class="ref-list">' + refs + "</ul>" +
+        '<p class="ref-foot">※ 제목·서지 정보는 공개 검색 결과 기준이며, 링크 접속이 제한될 수 있습니다.</p></div>' : "") +
+      '<div class="result-actions">' +
+        '<a class="btn btn-primary" href="#/quiz">자가검진 하러 가기</a>' +
+        '<a class="btn btn-ghost" href="#/faq">자주 묻는 질문</a>' +
+      "</div>";
+  }
+
+  // ============================================================
+  //  뷰: 자주 묻는 질문 (#/faq)
+  // ============================================================
+  function renderFaq() {
+    if (typeof FAQ === "undefined") { location.hash = "#/"; return; }
+    var items = FAQ.map(function (f) {
+      return '<details class="faq-item"><summary>' + esc(f.q) + "</summary>" +
+        '<div class="faq-a">' + esc(f.a) + "</div></details>";
+    }).join("");
+
+    view.innerHTML =
+      '<div class="ref-head"><h1>자주 묻는 질문</h1><p>8체질에 대해 많이 궁금해하시는 내용을 모았습니다.</p></div>' +
+      '<div class="card card-pad faq-list">' + items + "</div>" +
+      '<div class="result-actions">' +
+        '<a class="btn btn-primary" href="#/quiz">내 체질 검진하기</a>' +
+        '<a class="btn btn-ghost" href="#/about">학술적 배경</a>' +
+      "</div>";
+  }
+
+  // ============================================================
   //  라우터
   // ============================================================
   function router() {
     var hash = location.hash || "#/";
-    var parts = hash.replace(/^#\//, "").split("/"); // "" | "quiz" | "result" | "result/xxxx" | "reference" | "reference/CODE"
+    var parts = hash.replace(/^#\//, "").split("/"); // "" | "quiz" | "result[/xxxx]" | "reference[/CODE]" | "about" | "faq"
     var root = parts[0];
 
     if (root === "quiz") { renderQuiz(); }
@@ -349,6 +421,8 @@
       if (parts[1]) renderReferenceDetail(parts[1]);
       else renderReference();
     }
+    else if (root === "about") { renderAbout(); }
+    else if (root === "faq") { renderFaq(); }
     else { renderIntro(); }
 
     scrollTop();

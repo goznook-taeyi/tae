@@ -38,6 +38,7 @@ const CONSTITUTIONS = [
     name: "금양체질",
     nameEn: "Pulmotonia",
     group: "금",
+    autonomic: "교감신경긴장형",
     strong: "폐·대장 (금)",
     weak: "간·담 (목)",
     summary:
@@ -77,6 +78,7 @@ const CONSTITUTIONS = [
     name: "금음체질",
     nameEn: "Colonotonia",
     group: "금",
+    autonomic: "교감신경긴장형",
     strong: "대장·폐 (금)",
     weak: "담·간 (목)",
     summary:
@@ -116,6 +118,7 @@ const CONSTITUTIONS = [
     name: "토양체질",
     nameEn: "Pancreotonia",
     group: "토",
+    autonomic: "부교감신경긴장형",
     strong: "비·췌·위 (토)",
     weak: "신·방광 (수)",
     summary:
@@ -155,6 +158,7 @@ const CONSTITUTIONS = [
     name: "토음체질",
     nameEn: "Gastrotonia",
     group: "토",
+    autonomic: "부교감신경긴장형",
     strong: "위 (토)",
     weak: "방광·신 (수)",
     summary:
@@ -194,6 +198,7 @@ const CONSTITUTIONS = [
     name: "목양체질",
     nameEn: "Hepatonia",
     group: "목",
+    autonomic: "부교감신경긴장형",
     strong: "간·담 (목)",
     weak: "폐·대장 (금)",
     summary:
@@ -233,6 +238,7 @@ const CONSTITUTIONS = [
     name: "목음체질",
     nameEn: "Cholecystonia",
     group: "목",
+    autonomic: "부교감신경긴장형",
     strong: "담·간 (목)",
     weak: "대장·폐 (금)",
     summary:
@@ -272,6 +278,7 @@ const CONSTITUTIONS = [
     name: "수양체질",
     nameEn: "Renotonia",
     group: "수",
+    autonomic: "교감신경긴장형",
     strong: "신·방광 (수)",
     weak: "비·췌·위 (토)",
     summary:
@@ -311,6 +318,7 @@ const CONSTITUTIONS = [
     name: "수음체질",
     nameEn: "Vesicotonia",
     group: "수",
+    autonomic: "교감신경긴장형",
     strong: "방광·신 (수)",
     weak: "위·비 (토)",
     summary:

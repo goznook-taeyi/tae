@@ -271,7 +271,65 @@ main { flex: 1 0 auto; padding: 26px 0 60px; }
 .back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 600; text-decoration: none; color: var(--text-soft); }
 .back-link:hover { color: var(--text); }
 
+/* ---------- 문항 카테고리 ---------- */
+.q-cat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 12px; }
+.cat-chip {
+  font-size: 12px; font-weight: 700; color: #fff; background: var(--accent);
+  padding: 4px 11px; border-radius: 999px; white-space: nowrap;
+}
+.cat-hint { font-size: 12.5px; color: var(--text-soft); }
+
+/* ---------- 인트로 더보기 ---------- */
+.more-row { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
+.more-link {
+  display: flex; flex-direction: column; gap: 3px; padding: 15px 18px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text);
+}
+.more-link:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.more-link b { font-size: 15px; }
+.more-link span { font-size: 13px; color: var(--text-soft); }
+
+/* ---------- 학술 배경 ---------- */
+.fact p { margin: 0; color: var(--text); font-size: 15px; }
+.card.fact { margin-top: 14px; }
+.auto-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.auto-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; background: var(--bg-soft); }
+.auto-card h4 { margin: 0 0 10px; font-size: 15px; }
+.auto-card h4 .en { color: var(--text-soft); font-size: 12px; font-weight: 500; }
+.auto-card p { margin: 10px 0 0; font-size: 13.5px; color: var(--text-soft); }
+.ref-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.ref-list li { display: flex; flex-direction: column; gap: 2px; padding-left: 18px; position: relative; }
+.ref-list li::before { content: "▸"; position: absolute; left: 0; color: var(--accent); }
+.ref-list a { font-weight: 600; font-size: 14.5px; word-break: keep-all; }
+.ref-meta { font-size: 12.5px; color: var(--text-soft); }
+.ref-foot { margin: 16px 0 0; font-size: 12.5px; color: var(--text-soft); }
+
+/* ---------- FAQ ---------- */
+.faq-list { display: grid; gap: 4px; }
+.faq-item { border-bottom: 1px solid var(--border); padding: 4px 0; }
+.faq-item:last-child { border-bottom: none; }
+.faq-item summary {
+  cursor: pointer; font-weight: 700; font-size: 15.5px; padding: 12px 30px 12px 4px; position: relative;
+  list-style: none; line-height: 1.5;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: "+"; position: absolute; right: 6px; top: 10px; font-size: 22px; font-weight: 400;
+  color: var(--accent); transition: transform .2s;
+}
+.faq-item[open] summary::after { content: "−"; }
+.faq-a { padding: 0 4px 14px; color: var(--text); font-size: 14.5px; line-height: 1.7; }
+
 /* ---------- 반응형 ---------- */
+@media (min-width: 620px) {
+  .more-row { grid-template-columns: 1fr 1fr; }
+  .auto-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .nav-hide-sm { display: none; }
+}
+
+/* ---------- 반응형 (기존) ---------- */
 @media (min-width: 620px) {
   .info-grid { grid-template-columns: repeat(3, 1fr); }
   .ref-grid { grid-template-columns: repeat(2, 1fr); }

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>자막 오타 검수 보조 도구</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>자막 오타 검수 보조 도구</h1>
+    <p class="subtitle">영상에 박힌 한국어 자막을 읽어 오타 후보를 찾아드립니다.</p>
+  </header>
+
+  <main>
+    <p class="disclaimer">
+      ⚠️ 이 결과는 <strong>검수 보조용</strong>입니다. OCR 특성상 오탐이 있을 수 있으니
+      반드시 <strong>썸네일로 실제 화면을 확인</strong>하세요.
+    </p>
+
+    <section id="upload-card" class="card">
+      <label id="dropzone" for="file-input" class="dropzone">
+        <input type="file" id="file-input" accept="video/*" hidden />
+        <div class="dropzone-inner">
+          <div class="dz-icon">🎬</div>
+          <div class="dz-text">영상을 끌어다 놓거나 클릭해서 선택</div>
+          <div id="file-name" class="dz-file"></div>
+        </div>
+      </label>
+
+      <details class="advanced">
+        <summary>고급 설정</summary>
+        <div class="adv-grid">
+          <label>자막 위치(ROI 프리셋)
+            <select id="opt-roi-preset">
+              <option value="bottom">하단 (방송 자막)</option>
+              <option value="center">중앙~중하단 (숏폼 본문)</option>
+              <option value="top">상단 (제목)</option>
+              <option value="full">전체 (위치 모를 때)</option>
+              <option value="custom">직접 지정</option>
+            </select>
+          </label>
+          <label>그룹핑 모드
+            <select id="opt-grouping">
+              <option value="image">image (정지 배경·빠름)</option>
+              <option value="text">text (움직이는 배경·정확)</option>
+            </select>
+          </label>
+          <label class="roi-custom">자막 밴드 상단(0~1)
+            <input type="number" id="opt-roi-top" step="0.01" min="0" max="1" value="0.72" />
+          </label>
+          <label class="roi-custom">자막 밴드 하단(0~1)
+            <input type="number" id="opt-roi-bottom" step="0.01" min="0" max="1" value="1.0" />
+          </label>
+          <label>초당 샘플 프레임(sample_fps)
+            <input type="number" id="opt-fps" step="0.5" min="0.5" value="2" />
+          </label>
+          <label>세그먼트당 투표 프레임(K)
+            <input type="number" id="opt-votes" step="1" min="1" value="5" />
+          </label>
+        </div>
+      </details>
+
+      <button id="analyze-btn" class="primary" disabled>분석 시작</button>
+    </section>
+
+    <section id="progress-card" class="card hidden">
+      <div class="progress-label" id="progress-msg">준비 중…</div>
+      <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+    </section>
+
+    <section id="results-card" class="card hidden">
+      <div class="results-head">
+        <div class="summary" id="summary"></div>
+        <div class="controls">
+          <label class="chk"><input type="checkbox" id="filter-suspect" /> 의심 오타만 보기</label>
+          <button id="export-csv" class="ghost">CSV 내보내기</button>
+        </div>
+      </div>
+      <div id="warnings" class="warnings hidden"></div>
+      <div class="table-wrap">
+        <table id="results-table">
+          <thead>
+            <tr>
+              <th>시간</th><th>썸네일</th><th>자막 (OCR 합의)</th>
+              <th>의심 오타</th><th>신뢰도</th><th>상태</th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

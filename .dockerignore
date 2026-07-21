@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+data/
+scratch/
+tests/
+docs/
+.claude/
+*.mp4
+*.avi
+*.mov
+LOCAL_GUIDE.md
+DEPLOY.md

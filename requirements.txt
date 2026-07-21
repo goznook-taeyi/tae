@@ -1,0 +1,27 @@
+# Web
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# Data models / config
+pydantic>=2.7
+pydantic-settings>=2.2
+
+# Video / imaging
+opencv-python-headless>=4.9
+numpy>=1.26
+Pillow>=10.3
+
+# OCR (default engine). PaddleOCR pulls paddlepaddle (large, CPU wheel).
+# Imported lazily by app.ocr.PaddleOCREngine so the app/tests run without it.
+paddleocr>=2.7
+paddlepaddle>=2.6
+
+# Spell check + similarity + HTTP (hanspell / CLOVA)
+# 참고: py-hanspell은 PyPI/설치가 깨져 있어 저장소에 직접 내장(vendored)했다 → ./hanspell/ (MIT, ssut/py-hanspell)
+python-Levenshtein>=0.25
+requests>=2.31
+
+# --- dev / test ---
+pytest>=8.2
+httpx>=0.27

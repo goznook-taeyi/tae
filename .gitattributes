@@ -1,0 +1,4 @@
+# Windows 배치 파일은 CRLF 줄바꿈 필수 → 바이트 그대로 보존(ZIP 다운로드 포함)
+*.bat -text
+# macOS 실행 파일은 LF 유지
+*.command -text

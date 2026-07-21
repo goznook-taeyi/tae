@@ -90,6 +90,12 @@ def open_browser_later() -> None:
 
 
 def main() -> None:
+    # 콘솔 인코딩이 한글을 못 담아도(영문 Windows 등) 죽지 않도록
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except Exception:
+            pass
     ensure_venv()
     os.chdir(ROOT)
     sys.path.insert(0, str(ROOT))

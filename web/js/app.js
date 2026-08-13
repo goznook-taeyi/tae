@@ -189,8 +189,22 @@
     var c = CONSTITUTION_BY_CODE[top.code];
     var accent = groupAccent(c.group);
 
-    // 근소한 차이의 2순위 안내 여부 (최고점의 80% 이상)
-    var closeSecond = runnerUp && runnerUp.score > 0 && runnerUp.score >= top.score * 0.8;
+    // 신뢰도(1·2위 점수차)와 '헷갈리기 쉬운 체질' 계산
+    var ratio = (runnerUp && runnerUp.score > 0) ? runnerUp.score / top.score : 0;
+    var conf;
+    if (top.score < 8 || ratio >= 0.85) {
+      conf = { key: "low", label: "낮음", note: "결과가 갈릴 수 있어요. 아래 ‘헷갈리기 쉬운 체질’을 꼭 함께 확인하세요." };
+    } else if (ratio >= 0.7) {
+      conf = { key: "mid", label: "보통", note: "대체로 이 방향이지만, 비슷한 체질도 함께 참고하세요." };
+    } else {
+      conf = { key: "high", label: "높음", note: "비교적 뚜렷하게 이 체질로 기울었어요. 그래도 확진은 전문의 맥진이 정확합니다." };
+    }
+
+    // 혼동 쌍 = 근소한 2위(70% 이상) + 데이터상 혼동 체질 (자기 자신·중복 제외)
+    var confuseCodes = [];
+    if (runnerUp && runnerUp.score > 0 && ratio >= 0.7) confuseCodes.push(runnerUp.code);
+    (c.confusable || []).forEach(function (code) { if (confuseCodes.indexOf(code) < 0) confuseCodes.push(code); });
+    confuseCodes = confuseCodes.filter(function (code) { return code !== c.code && CONSTITUTION_BY_CODE[code]; });
 
     var scoreBars = ranked.map(function (r, idx) {
       var w = Math.round((r.score / maxScore) * 100);
@@ -211,18 +225,31 @@
           '<span class="organ-pill">강한 장기 <b>' + esc(c.strong) + "</b></span>" +
           '<span class="organ-pill">약한 장기 <b>' + esc(c.weak) + "</b></span>" +
           (c.autonomic ? '<span class="organ-pill">자율신경 <b>' + esc(c.autonomic) + "</b></span>" : "") +
+          '<span class="organ-pill conf-' + conf.key + '">검진 신뢰도 <b>' + conf.label + "</b></span>" +
         "</div>" +
         '<p class="summary">' + esc(c.summary) + "</p>" +
-        (closeSecond
-          ? '<div class="notice" style="margin-top:18px">점수가 <strong>' + esc(runnerUp.name) +
-            "</strong>와(과) 근소한 차이입니다. 두 체질의 섭식표를 함께 참고하고, 실제 음식 반응으로 확인해 보세요. " +
-            '<a href="#/reference/' + runnerUp.code + '">' + esc(runnerUp.name) + " 보기 →</a></div>"
-          : "") +
+        '<div class="notice" style="margin-top:18px">🔎 <strong>자가검진은 모든 체질에서 오차가 있을 수 있습니다.</strong> ' + esc(conf.note) + "</div>" +
       "</div>" +
 
       '<div class="card card-pad scores">' +
         '<h3>체질별 경향 점수</h3>' + scoreBars +
       "</div>" +
+
+      (confuseCodes.length
+        ? '<div class="card card-pad">' +
+            '<h3 class="section-title">↔️ 헷갈리기 쉬운 체질</h3>' +
+            '<p style="margin-top:0">' + esc(c.name) + "은(는) 아래 체질과 자주 혼동됩니다. 특히 " +
+            "<strong>음식 반응</strong>(고기·해물·찬 음식·인삼 등)을 직접 비교하면 구별이 확실해집니다.</p>" +
+            '<div class="confuse-row">' +
+              confuseCodes.map(function (code) {
+                var cc = CONSTITUTION_BY_CODE[code];
+                var a = groupAccent(cc.group);
+                return '<a class="confuse-card" href="#/reference/' + code + '" style="border-left-color:' + a + '">' +
+                  "<b>" + esc(cc.name) + "</b><span>" + esc(cc.summary) + "</span></a>";
+              }).join("") +
+            "</div>" +
+          "</div>"
+        : "") +
 
       constitutionDetailHtml(c) +
 

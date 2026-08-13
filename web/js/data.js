@@ -35,6 +35,7 @@ const GROUP_THEME = {
 const CONSTITUTIONS = [
   {
     code: "GY",
+    confusable: ["SY", "GEU"],
     name: "금양체질",
     nameEn: "Pulmotonia",
     group: "금",
@@ -75,6 +76,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "GEU",
+    confusable: ["GY", "TY"],
     name: "금음체질",
     nameEn: "Colonotonia",
     group: "금",
@@ -115,6 +117,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "TY",
+    confusable: ["TEU", "MY"],
     name: "토양체질",
     nameEn: "Pancreotonia",
     group: "토",
@@ -155,6 +158,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "TEU",
+    confusable: ["TY"],
     name: "토음체질",
     nameEn: "Gastrotonia",
     group: "토",
@@ -195,6 +199,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "MY",
+    confusable: ["TY", "MEU"],
     name: "목양체질",
     nameEn: "Hepatonia",
     group: "목",
@@ -235,6 +240,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "MEU",
+    confusable: ["MY", "SEU"],
     name: "목음체질",
     nameEn: "Cholecystonia",
     group: "목",
@@ -275,6 +281,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "SY",
+    confusable: ["SEU", "GY"],
     name: "수양체질",
     nameEn: "Renotonia",
     group: "수",
@@ -315,6 +322,7 @@ const CONSTITUTIONS = [
   },
   {
     code: "SEU",
+    confusable: ["SY", "MEU"],
     name: "수음체질",
     nameEn: "Vesicotonia",
     group: "수",

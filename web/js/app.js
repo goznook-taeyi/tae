@@ -86,6 +86,7 @@
       '<div class="more-row">' +
         '<a class="more-link" href="#/about"><b>📚 학술적 배경</b><span>진단 원리·근거·한계와 참고문헌</span></a>' +
         '<a class="more-link" href="#/faq"><b>❓ 자주 묻는 질문</b><span>체질이 바뀌나? 자가검진은 믿을만한가?</span></a>' +
+        '<a class="more-link" href="#/trends"><b>📈 동향 · 한의원 찾기</b><span>최근 흐름과 내 지역 병원 검색</span></a>' +
       "</div>";
   }
   function infoItem(h, p) {
@@ -408,11 +409,48 @@
   }
 
   // ============================================================
+  //  뷰: 동향 · 한의원 찾기 (#/trends)
+  // ============================================================
+  function renderTrends() {
+    var trends = (typeof TREND_NOTES !== "undefined")
+      ? TREND_NOTES.map(function (t) {
+          return '<div class="card card-pad fact"><h3 class="section-title"><span class="tag-chip">' + esc(t.tag) + "</span>" +
+            esc(t.title) + "</h3><p>" + esc(t.body) + "</p></div>";
+        }).join("")
+      : "";
+
+    var finder = "";
+    if (typeof CLINIC_FINDER !== "undefined") {
+      var buttons = CLINIC_FINDER.regions.map(function (r) {
+        var url = "https://map.naver.com/p/search/" + encodeURIComponent(r.query);
+        return '<a class="region-btn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+          "📍 " + esc(r.label) + "</a>";
+      }).join("");
+      finder =
+        '<div class="card card-pad">' +
+          '<h3 class="section-title">🏥 내 지역 8체질 한의원 찾기</h3>' +
+          "<p style='margin-top:0'>" + esc(CLINIC_FINDER.intro) + "</p>" +
+          '<div class="region-grid">' + buttons + "</div>" +
+          '<div class="callout warn" style="margin-top:16px">' + esc(CLINIC_FINDER.disclaimer) + "</div>" +
+        "</div>";
+    }
+
+    view.innerHTML =
+      '<div class="ref-head"><h1>동향 · 한의원 찾기</h1><p>팔체질을 둘러싼 최근 흐름과, 내 지역에서 진료 병원을 찾는 방법입니다.</p></div>' +
+      trends +
+      finder +
+      '<div class="result-actions">' +
+        '<a class="btn btn-primary" href="#/quiz">내 체질 검진하기</a>' +
+        '<a class="btn btn-ghost" href="#/about">학술적 배경</a>' +
+      "</div>";
+  }
+
+  // ============================================================
   //  라우터
   // ============================================================
   function router() {
     var hash = location.hash || "#/";
-    var parts = hash.replace(/^#\//, "").split("/"); // "" | "quiz" | "result[/xxxx]" | "reference[/CODE]" | "about" | "faq"
+    var parts = hash.replace(/^#\//, "").split("/"); // "" | "quiz" | "result[/xxxx]" | "reference[/CODE]" | "about" | "faq" | "trends"
     var root = parts[0];
 
     if (root === "quiz") { renderQuiz(); }
@@ -423,6 +461,7 @@
     }
     else if (root === "about") { renderAbout(); }
     else if (root === "faq") { renderFaq(); }
+    else if (root === "trends") { renderTrends(); }
     else { renderIntro(); }
 
     scrollTop();

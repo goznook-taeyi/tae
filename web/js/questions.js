@@ -101,7 +101,7 @@ const QUESTIONS = [
     cat: "digest",
     text: "식사량과 소화력은 어느 쪽인가요?",
     options: [
-      { text: "대식·강한 소화력 — 회식·뷔페에서 과식해도 탈나는 일이 거의 없고, 끼니를 거르면 못 견딘다", weights: { TY: 2, MY: 2, TEU: 2 } },
+      { text: "대식·강한 소화력 — 회식·뷔페에서 과식해도 탈나는 일이 거의 없고, 끼니를 거르면 못 견딘다", weights: { TY: 2, MY: 1, TEU: 2 } },
       { text: "소식·약한 위장 — 남들보다 확실히 적게 먹고, 평소 양보다 조금만 더 먹어도 더부룩하거나 체한다", weights: { SEU: 3, SY: 2 } },
       unsure("보통이다"),
     ],
@@ -204,7 +204,7 @@ const QUESTIONS = [
     cat: "food",
     text: "홍삼·인삼을 일주일 이상 챙겨 먹어보면?",
     options: [
-      { text: "확실히 기운이 나고 몸이 따뜻해지는 게 느껴진다", weights: { MY: 2, MEU: 1, SY: 2, SEU: 1 } },
+      { text: "확실히 기운이 나고 몸이 따뜻해지는 게 느껴진다", weights: { MY: 1, MEU: 1, SY: 2, SEU: 1 } },
       { text: "얼굴이 붉어지고 열이 오르거나, 두통·가슴 답답함·불면이 생긴다", weights: { TY: 2, TEU: 2, GY: 2, GEU: 1 } },
       unsure("먹어본 적 없다 / 차이를 모르겠다"),
     ],
@@ -268,7 +268,7 @@ const QUESTIONS = [
     text: "고기·기름진 식사를 몇 주 이상 계속하면 몸은?",
     options: [
       { text: "오히려 다리에 힘이 빠지거나 쉽게 피로해진 적이 있다", weights: { GEU: 3, GY: 1 } },
-      { text: "먹을수록 힘이 나고 몸이 든든해진다", weights: { MY: 2, MEU: 1, SY: 1, SEU: 1 } },
+      { text: "먹을수록 힘이 나고 몸이 든든해진다", weights: { MY: 1, MEU: 1, SY: 1, SEU: 1 } },
       unsure("그렇게 오래 계속해 본 적 없다 / 모르겠다"),
     ],
   },

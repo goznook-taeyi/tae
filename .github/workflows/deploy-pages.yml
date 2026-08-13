@@ -30,6 +30,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp -r web /tmp/site        # git rm 전에 대피 (rm이 web/까지 지움)
+          # 캐시 무효화: 에셋 URL에 커밋 SHA를 붙여 브라우저/CDN이 항상 새 버전을 받게 함
+          V="${GITHUB_SHA:0:7}"
+          sed -i "s#css/style.css#css/style.css?v=${V}#; s#js/data.js#js/data.js?v=${V}#; s#js/questions.js#js/questions.js?v=${V}#; s#js/content.js#js/content.js?v=${V}#; s#js/app.js#js/app.js?v=${V}#" /tmp/site/index.html
           git checkout --orphan gh-pages
           git rm -rfq .
           cp -r /tmp/site/* .

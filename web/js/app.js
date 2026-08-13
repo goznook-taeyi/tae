@@ -12,7 +12,18 @@
   var state = {
     answers: new Array(QUESTIONS.length).fill(null), // 각 문항의 선택 index
     current: 0,
+    tbKey: null,      // 정밀 확인(타이브레이커) 대상 쌍 키 (예: "GY|SY")
+    tbAnswers: null,  // 정밀 확인 답안
+    tbCurrent: 0,
   };
+
+  function resetState() {
+    state.answers = new Array(QUESTIONS.length).fill(null);
+    state.current = 0;
+    state.tbKey = null;
+    state.tbAnswers = null;
+    state.tbCurrent = 0;
+  }
 
   // ---- 유틸 ----
   function esc(s) {
@@ -162,26 +173,124 @@
     }
   }
 
+  function mainCode() {
+    return state.answers.map(function (a) { return a == null ? "x" : String(a); }).join("");
+  }
+
+  // 1·2위가 근소(70% 이상)하고 그 쌍의 정밀 문항이 있으면 쌍 키를 반환
+  function tiebreakPair(scores) {
+    if (typeof TIEBREAKERS === "undefined") return null;
+    var ranked = rankScores(scores);
+    var top = ranked[0], runner = ranked[1];
+    if (!top || !runner || top.score < 1 || runner.score <= 0) return null;
+    if (runner.score / top.score < 0.7) return null;
+    var key = [top.code, runner.code].sort().join("|");
+    return TIEBREAKERS[key] ? key : null;
+  }
+
   function finishQuiz() {
-    // 공유 가능한 해시로 답안 인코딩 (각 답 0~9 한 자리)
-    var code = state.answers.map(function (a) { return a == null ? "x" : String(a); }).join("");
-    location.hash = "#/result/" + code;
+    // 1·2위가 비슷하면 정밀 확인 단계로, 아니면 바로 결과로
+    var key = tiebreakPair(computeScores(state.answers));
+    if (key) {
+      state.tbKey = key;
+      state.tbAnswers = new Array(TIEBREAKERS[key].questions.length).fill(null);
+      state.tbCurrent = 0;
+      location.hash = "#/extra";
+    } else {
+      location.hash = "#/result/" + mainCode();
+    }
+  }
+
+  // ============================================================
+  //  뷰: 정밀 확인 (타이브레이커)
+  // ============================================================
+  function renderExtra() {
+    if (!state.tbKey || !TIEBREAKERS[state.tbKey]) { location.hash = "#/quiz"; return; }
+    var qs = TIEBREAKERS[state.tbKey].questions;
+    var i = Math.min(Math.max(state.tbCurrent, 0), qs.length - 1);
+    state.tbCurrent = i;
+    var q = qs[i];
+    var answered = state.tbAnswers[i];
+    var names = state.tbKey.split("|").map(function (c) {
+      return CONSTITUTION_BY_CODE[c] ? CONSTITUTION_BY_CODE[c].name : c;
+    });
+
+    var opts = q.options.map(function (opt, idx) {
+      var on = answered === idx;
+      return '<button type="button" class="option" aria-pressed="' + on + '" data-opt="' + idx + '">' +
+        '<span class="tick" aria-hidden="true">' + (on ? "✓" : "") + "</span>" +
+        "<span>" + esc(opt.text) + "</span></button>";
+    }).join("");
+
+    var isLast = i === qs.length - 1;
+
+    view.innerHTML =
+      '<div class="quiz-top">' +
+        '<span class="quiz-count">정밀 확인 ' + (i + 1) + " / " + qs.length + "</span>" +
+      "</div>" +
+      '<div class="notice" style="margin:0 0 12px">🔍 점수가 <strong>' + esc(names[0]) + "</strong>·<strong>" + esc(names[1]) +
+        "</strong> 두 체질로 비슷하게 나왔어요. 두 체질을 가르는 질문 " + qs.length + "개만 더 답해 주세요.</div>" +
+      '<div class="card question">' +
+        "<h2>" + esc(q.text) + "</h2>" +
+        '<div class="options">' + opts + "</div>" +
+      "</div>" +
+      '<div class="quiz-nav">' +
+        '<button type="button" class="btn btn-ghost" data-nav="prev"' + (i === 0 ? " disabled" : "") + "> ← 이전</button>" +
+        '<button type="button" class="btn btn-primary" data-nav="next"' + (answered == null ? " disabled" : "") + ">" + (isLast ? "결과 보기" : "다음") + " →</button>" +
+      "</div>";
+
+    Array.prototype.forEach.call(view.querySelectorAll(".option"), function (btn) {
+      btn.addEventListener("click", function () {
+        state.tbAnswers[i] = parseInt(btn.getAttribute("data-opt"), 10);
+        setTimeout(goNext, 180);
+      });
+    });
+    var prev = view.querySelector('[data-nav="prev"]');
+    var next = view.querySelector('[data-nav="next"]');
+    if (prev) prev.addEventListener("click", function () { state.tbCurrent = i - 1; renderExtra(); scrollTop(); });
+    if (next) next.addEventListener("click", goNext);
+
+    function goNext() {
+      if (state.tbAnswers[i] == null) return;
+      if (isLast) {
+        var tb = state.tbAnswers.map(function (a) { return a == null ? "x" : String(a); }).join("");
+        location.hash = "#/result/" + mainCode() + "~" + tb;
+      } else { state.tbCurrent = i + 1; renderExtra(); scrollTop(); }
+    }
   }
 
   // ============================================================
   //  뷰: 결과
   // ============================================================
   function renderResult(encoded) {
-    // 인코딩된 답안이 있으면 복원
+    // 인코딩된 답안이 있으면 복원 ("메인답안~정밀답안" 형식)
+    var tbPart = null;
     if (encoded) {
-      var arr = encoded.split("").map(function (ch) { return ch === "x" ? null : parseInt(ch, 10); });
+      var parts = encoded.split("~");
+      var arr = parts[0].split("").map(function (ch) { return ch === "x" ? null : parseInt(ch, 10); });
       if (arr.length === QUESTIONS.length) state.answers = arr;
+      tbPart = parts[1] || null;
     }
 
     var answeredCount = state.answers.filter(function (a) { return a != null; }).length;
     if (answeredCount === 0) { location.hash = "#/quiz"; return; }
 
     var scores = computeScores(state.answers);
+
+    // 정밀 확인 답안 반영 (쌍은 메인 답안에서 결정적으로 재계산됨)
+    var tbApplied = false;
+    var tbKey = tiebreakPair(scores);
+    if (tbKey && tbPart) {
+      var tbqs = TIEBREAKERS[tbKey].questions;
+      tbPart.split("").forEach(function (ch, i) {
+        if (ch === "x" || !tbqs[i]) return;
+        var opt = tbqs[i].options[parseInt(ch, 10)];
+        if (opt && opt.weights) {
+          for (var k in opt.weights) { if (scores[k] != null) scores[k] += opt.weights[k]; }
+          tbApplied = true;
+        }
+      });
+    }
     var ranked = rankScores(scores);
     var top = ranked[0];
     var runnerUp = ranked[1];
@@ -226,6 +335,7 @@
           '<span class="organ-pill">약한 장기 <b>' + esc(c.weak) + "</b></span>" +
           (c.autonomic ? '<span class="organ-pill">자율신경 <b>' + esc(c.autonomic) + "</b></span>" : "") +
           '<span class="organ-pill conf-' + conf.key + '">검진 신뢰도 <b>' + conf.label + "</b></span>" +
+          (tbApplied ? '<span class="organ-pill conf-high">정밀 확인 <b>반영됨</b></span>' : "") +
         "</div>" +
         '<p class="summary">' + esc(c.summary) + "</p>" +
         '<div class="notice" style="margin-top:18px">🔎 <strong>자가검진은 모든 체질에서 오차가 있을 수 있습니다.</strong> ' + esc(conf.note) + "</div>" +
@@ -261,10 +371,7 @@
 
     // 다시 검진: 상태 초기화
     var retry = document.getElementById("retry-btn");
-    if (retry) retry.addEventListener("click", function () {
-      state.answers = new Array(QUESTIONS.length).fill(null);
-      state.current = 0;
-    });
+    if (retry) retry.addEventListener("click", resetState);
 
     // 공유 링크 복사
     var share = document.getElementById("share-btn");
@@ -481,6 +588,7 @@
     var root = parts[0];
 
     if (root === "quiz") { renderQuiz(); }
+    else if (root === "extra") { renderExtra(); }
     else if (root === "result") { renderResult(parts[1] || ""); }
     else if (root === "reference") {
       if (parts[1]) renderReferenceDetail(parts[1]);

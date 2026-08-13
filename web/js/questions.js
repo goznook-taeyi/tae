@@ -4,9 +4,9 @@
  * 구성 원리(학술 설문 도구 참고):
  *  - 사상·8체질 설문(KS-15, ECM-32 등)은 '체형 → 성격/기질 → 소증(평소 몸 상태:
  *    한열·땀·소화·배변) → 음식 반응' 순의 영역으로 사람을 분류합니다.
- *  - 그 순서를 따라 '쉽게 답할 수 있는 문항'을 앞에, '음식 반응처럼 관찰이 필요한
- *    문항'을 뒤에 배치했습니다. 모든 문항에 '잘 모르겠다/중간' 중립 선택지를 두어
- *    억지로 고르지 않도록 했습니다.
+ *  - 모든 문항은 "언제·무엇을 기준으로 판단할지"를 구체적으로 명시했습니다
+ *    (BMI 수치, 운동/사우나 상황, 배변 횟수, '먹은 다음 날' 반응 등).
+ *  - 모든 문항에 '잘 모르겠다/중간' 중립 선택지를 두어 억지로 고르지 않도록 했습니다.
  *  - 각 선택지의 weights 는 그 응답이 가리키는 체질 코드에 주는 점수입니다.
  *    (GY 금양 / GEU 금음 / TY 토양 / TEU 토음 / MY 목양 / MEU 목음 / SY 수양 / SEU 수음)
  *  - 문항·선택지·가중치는 자유롭게 수정할 수 있으며 사이트에 즉시 반영됩니다.
@@ -15,11 +15,11 @@
 
 // 문항 영역(카테고리) — 화면에 라벨/도움말로 표시됩니다.
 const QUESTION_CATEGORIES = {
-  body:      { label: "체형·외형",   hint: "타고난 몸의 생김새를 떠올려 보세요." },
-  temper:    { label: "성격·기질",   hint: "평소 나의 성향에 가장 가까운 쪽을 고르세요." },
-  coldheat:  { label: "한열(추위·더위)", hint: "특별한 이유 없이 평소 느끼는 체온 경향입니다." },
-  digest:    { label: "소화·배변",   hint: "평소의 소화력과 배변 습관을 떠올려 보세요." },
-  food:      { label: "음식 반응",   hint: "그 음식을 먹은 뒤 '내 몸'이 어땠는지가 핵심 단서입니다." },
+  body:      { label: "체형·외형",   hint: "지금 다이어트 중이더라도 '타고난 경향'으로 답하세요. BMI = 몸무게(kg) ÷ 키(m)² (예: 170cm·65kg → 22.5)" },
+  temper:    { label: "성격·기질",   hint: "직장·모임에서 실제로 하는 행동을 떠올려 답하세요." },
+  coldheat:  { label: "한열(추위·더위)", hint: "감기 등 아플 때 말고, 평소 계절을 날 때의 경향입니다." },
+  digest:    { label: "소화·배변",   hint: "최근 1~2년의 평균적인 패턴으로 답하세요." },
+  food:      { label: "음식 반응",   hint: "좋아하는지가 아니라, 먹고 난 '몇 시간 뒤~다음 날 몸 상태'가 기준입니다." },
   other:     { label: "약물·기타",   hint: "약이나 특정 물질에 대한 몸의 민감도입니다." },
 };
 
@@ -31,12 +31,12 @@ const QUESTIONS = [
   {
     id: "q_body",
     cat: "body",
-    text: "타고난 체형은 어느 쪽에 가깝나요?",
+    text: "성인이 된 후 지금까지, 체형은 어느 쪽에 가깝나요?",
     options: [
-      { text: "마른 편이고, 많이 먹어도 살이 잘 안 찐다", weights: { GY: 2, GEU: 1, SY: 1, SEU: 1 } },
-      { text: "살이 잘 찌고, 몸집이 듬직한 편이다", weights: { MY: 2, MEU: 1 } },
-      { text: "근육이 잘 붙고 몸이 단단한 편이다", weights: { GEU: 2, MY: 1 } },
-      unsure("보통·표준 체형이다"),
+      { text: "늘 마른 편 — 많이 먹어도 몸무게가 잘 안 늘고, BMI 20 미만이거나 '말랐다'는 말을 자주 듣는다", weights: { GY: 2, GEU: 1, SY: 1, SEU: 1 } },
+      { text: "살이 잘 붙는 편 — 조금만 방심해도 몸무게가 늘고, BMI 25 안팎 이상이거나 다이어트를 반복한다", weights: { MY: 2, MEU: 1 } },
+      { text: "단단한 근육형 — 특별히 운동하지 않아도 근육이 잘 붙고 몸이 다부지다", weights: { GEU: 2, MY: 1 } },
+      unsure("보통 체형 (BMI 20~24 정도, 몸무게 변동이 크지 않다)"),
     ],
   },
 
@@ -44,21 +44,21 @@ const QUESTIONS = [
   {
     id: "q_temper1",
     cat: "temper",
-    text: "일을 대하는 성향은 어느 쪽인가요?",
+    text: "일할 때 나는 어느 쪽에 가깝나요?",
     options: [
-      { text: "급하고 활동적이며 호기심이 많다", weights: { TY: 2, GEU: 1, TEU: 1 } },
-      { text: "느긋하고 참을성이 있으며 과묵하다", weights: { MY: 2, MEU: 1, SEU: 1 } },
-      { text: "꼼꼼하고 신중하며 침착하다", weights: { SY: 2, GY: 1 } },
+      { text: "속전속결형 — 일을 벌이는 걸 좋아하고, 결과가 빨리 안 나오면 답답해서 재촉한다", weights: { TY: 2, GEU: 1, TEU: 1 } },
+      { text: "무던한 뚝심형 — 마감이 닥쳐도 크게 조급해지지 않고, 화내는 일이 드물다는 말을 듣는다", weights: { MY: 2, MEU: 1, SEU: 1 } },
+      { text: "꼼꼼한 계획형 — 체크리스트·계획표가 있어야 마음이 편하고, 갑작스러운 일정 변경이 불편하다", weights: { SY: 2, GY: 1 } },
       unsure(),
     ],
   },
   {
     id: "q_temper2",
     cat: "temper",
-    text: "새로운 사람·상황을 만났을 때 나는?",
+    text: "모임·새로운 사람 앞에서 나는?",
     options: [
-      { text: "먼저 다가가고 표현이 빠른 외향형", weights: { TY: 1, TEU: 1, GEU: 1 } },
-      { text: "지켜본 뒤 천천히 마음을 여는 신중형", weights: { SY: 2, GY: 2, SEU: 1 } },
+      { text: "먼저 말을 거는 쪽 — 사람을 만나면 오히려 에너지가 충전된다", weights: { TY: 1, TEU: 1, GEU: 1 } },
+      { text: "주로 듣는 쪽 — 낯선 자리에선 지켜보고, 사람을 오래 만나면 기가 빨려서 혼자 쉬어야 한다", weights: { SY: 2, GY: 1, SEU: 1 } },
       unsure("상황에 따라 다르다"),
     ],
   },
@@ -67,31 +67,31 @@ const QUESTIONS = [
   {
     id: "q_coldheat",
     cat: "coldheat",
-    text: "더위와 추위 중 어느 쪽에 더 약한가요?",
+    text: "여름과 겨울 중 어느 쪽이 유독 힘든가요?",
     options: [
-      { text: "더위를 많이 타고, 몸에 열이 많은 편", weights: { TY: 2, TEU: 2, MY: 1 } },
-      { text: "추위를 많이 타고, 몸이 찬 편", weights: { SY: 2, SEU: 2, MEU: 1 } },
-      unsure("특별히 어느 쪽도 아니다"),
+      { text: "여름이 힘들다 — 남들보다 더위를 심하게 타서 에어컨 없이 잠들기 어렵고, 겨울은 비교적 잘 견딘다", weights: { TY: 2, TEU: 2, MY: 1 } },
+      { text: "겨울이 힘들다 — 남들보다 추위를 심하게 타서 내복·전기장판을 챙기고, 여름은 비교적 잘 견딘다", weights: { SY: 2, SEU: 2, MEU: 1 } },
+      unsure("둘 다 비슷하게 견딜 만하다"),
     ],
   },
   {
     id: "q_hands",
     cat: "coldheat",
-    text: "손발이나 아랫배가 찬 편인가요?",
+    text: "손발·아랫배 온도는 평소 어떤가요? (한겨울 제외)",
     options: [
-      { text: "자주 차고, 따뜻하게 하면 편하다", weights: { SY: 2, SEU: 2, MEU: 2 } },
-      { text: "오히려 화끈거리거나 더운 편이다", weights: { TY: 1, TEU: 2 } },
-      unsure("보통이다"),
+      { text: "차다 — 악수할 때 손이 차다는 말을 듣거나, 아랫배를 만지면 서늘해서 배를 따뜻하게 하면 편하다", weights: { SY: 2, SEU: 2, MEU: 2 } },
+      { text: "따뜻하다 못해 덥다 — 손발이 화끈거려 이불 밖으로 발을 내놓고 자는 편이다", weights: { TY: 1, TEU: 2 } },
+      unsure("특별히 차지도 덥지도 않다"),
     ],
   },
   {
     id: "q_sweat",
     cat: "coldheat",
-    text: "땀을 흘리고 나면 몸 상태가 어떤가요?",
+    text: "땀은 평소 어떤가요? (운동할 때 기준)",
     options: [
-      { text: "흠뻑 흘리고 나면 개운하고 시원하다", weights: { MY: 3, MEU: 1 } },
-      { text: "땀이 적은 편이고, 많이 흘리면 오히려 지친다", weights: { SY: 2, SEU: 2, GY: 1, GEU: 1 } },
-      unsure("땀은 보통이다"),
+      { text: "많은 편 — 가볍게 걷거나 매운 것만 먹어도 땀이 나고, 운동으로 쭉 빼고 나면 몸이 가볍고 개운하다", weights: { MY: 3, MEU: 1 } },
+      { text: "적은 편 — 한여름에 운동을 해도 땀이 잘 안 나고, 억지로 많이 빼면 오히려 어지럽거나 기운이 빠진다", weights: { SY: 2, SEU: 2, GY: 1, GEU: 1 } },
+      unsure("운동하면 적당히 나는 보통 수준"),
     ],
   },
 
@@ -99,21 +99,22 @@ const QUESTIONS = [
   {
     id: "q_appetite",
     cat: "digest",
-    text: "평소 식사량과 소화력은 어떤가요?",
+    text: "식사량과 소화력은 어느 쪽인가요?",
     options: [
-      { text: "많이 먹는 편이고, 뭐든 잘 소화한다", weights: { TY: 2, MY: 2, TEU: 2 } },
-      { text: "소식하는 편이고, 조금만 과식해도 속이 불편하다", weights: { SEU: 3, SY: 2 } },
+      { text: "대식·강한 소화력 — 회식·뷔페에서 과식해도 탈나는 일이 거의 없고, 끼니를 거르면 못 견딘다", weights: { TY: 2, MY: 2, TEU: 2 } },
+      { text: "소식·약한 위장 — 남들보다 확실히 적게 먹고, 평소 양보다 조금만 더 먹어도 더부룩하거나 체한다", weights: { SEU: 3, SY: 2 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_bowel",
     cat: "digest",
-    text: "평소 대변 상태는 어떤가요?",
+    text: "최근 1~2년, 대변 패턴은 어느 쪽인가요?",
     options: [
-      { text: "자주 무르거나, 찬 것·과식하면 설사한다", weights: { MEU: 3, SEU: 1 } },
-      { text: "변비 경향이 있고, 오래 참아도 견딜 만하다", weights: { SY: 2 } },
-      unsure("규칙적이고 무난하다"),
+      { text: "무른 편 — 찬 음식·우유·과식이면 어김없이 설사하고, 하루 2회 이상 가는 날도 잦다", weights: { MEU: 3, SEU: 1 } },
+      { text: "변비 경향 — 2~3일에 1회일 때도 있지만 그래도 크게 불편하지 않고 잘 참는 편이다", weights: { SY: 2 } },
+      { text: "하루 1회, 굵고 시원하게 규칙적으로 본다", weights: { GEU: 2, TY: 1, MY: 1 } },
+      unsure(),
     ],
   },
 
@@ -121,131 +122,132 @@ const QUESTIONS = [
   {
     id: "q_diet",
     cat: "food",
-    text: "전반적으로 어떤 식단이 몸에 더 잘 맞나요?",
+    text: "몇 주간 식단을 비교해 보면, 몸이 더 가벼운 쪽은?",
     options: [
-      { text: "채소·생선·해물 위주가 편하고, 고기는 부담스럽다", weights: { GY: 2, GEU: 2 } },
-      { text: "고기·뿌리채소가 든든하고, 날것·해물은 부담스럽다", weights: { MY: 2, MEU: 1, SY: 1, SEU: 1 } },
-      unsure("특별한 선호가 없다"),
+      { text: "생선·해물·채소 위주일 때 — 고기를 며칠 연달아 먹으면 몸이 무겁고 컨디션이 처진다", weights: { GY: 2, GEU: 2 } },
+      { text: "고기·뿌리채소 위주일 때 — 고기를 먹어야 힘이 나고, 회·해물은 별로 당기지 않거나 먹고 탈난 적이 있다", weights: { MY: 2, MEU: 1, SY: 1, SEU: 1 } },
+      unsure("어느 쪽이든 차이를 못 느낀다"),
     ],
   },
   {
     id: "q_meat",
     cat: "food",
-    text: "소고기 등 육류를 먹은 뒤 몸은 어떤가요?",
+    text: "소고기·삼겹살을 배불리 먹은 '다음 날' 몸 상태는?",
     options: [
-      { text: "든든하고 힘이 난다", weights: { MY: 2, MEU: 2, SY: 1, SEU: 1 } },
-      { text: "속이 더부룩하거나 피부·컨디션이 나빠진다", weights: { GY: 2, GEU: 2 } },
+      { text: "속이 편하고 오히려 힘이 난다", weights: { MY: 2, MEU: 2, SY: 1, SEU: 1 } },
+      { text: "속이 더부룩하거나, 몸이 무겁고 피부 트러블이 올라온다", weights: { GY: 2, GEU: 2 } },
       unsure("별 차이를 못 느낀다"),
     ],
   },
   {
     id: "q_flour",
     cat: "food",
-    text: "밀가루 음식(빵·면)은 잘 맞나요?",
+    text: "빵·면(밀가루)을 며칠 연달아 먹으면?",
     options: [
-      { text: "잘 맞고 즐겨 먹는다", weights: { MY: 2, MEU: 2 } },
-      { text: "먹으면 속이 더부룩하거나 몸이 붓는다", weights: { GY: 2, GEU: 2, SEU: 1 } },
-      unsure("보통이다"),
+      { text: "아무렇지 않다 — 밀가루를 즐겨 먹어도 몸에 표시가 안 난다", weights: { MY: 2, MEU: 2 } },
+      { text: "탈이 난다 — 잘 붓거나 더부룩하고, 밀가루를 끊었더니 몸이 가벼워진 경험이 있다", weights: { GY: 2, GEU: 2, SEU: 1 } },
+      unsure("보통이다 / 잘 모르겠다"),
     ],
   },
   {
     id: "q_dairy",
     cat: "food",
-    text: "우유·치즈 등 유제품은 어떤가요?",
+    text: "우유 한 컵(200ml)을 마시면?",
     options: [
-      { text: "잘 맞는다", weights: { MY: 2, MEU: 1 } },
-      { text: "배탈·설사가 나거나 속이 불편하다", weights: { GY: 2, GEU: 2, SEU: 1 } },
+      { text: "속이 편하다 — 우유·치즈·요거트를 즐겨 먹어도 문제없다", weights: { MY: 2, MEU: 1 } },
+      { text: "배가 부글거리거나 설사한다 — 유제품이 안 받는 편이다", weights: { GY: 2, GEU: 2, SEU: 1 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_cold_food",
     cat: "food",
-    text: "차가운 음식·얼음물은 어떤가요?",
+    text: "얼음물·냉면·빙수 같은 찬 음식은?",
     options: [
-      { text: "시원한 것이 좋고 잘 마신다", weights: { TY: 2, TEU: 2 } },
-      { text: "배탈이 나거나 속이 불편·설사한다", weights: { SEU: 2, SY: 2, MEU: 2 } },
+      { text: "한겨울에도 얼음물이 좋고, 먹어도 탈나지 않는다", weights: { TY: 2, TEU: 2 } },
+      { text: "먹으면 배가 아프거나 설사한 일이 반복돼서 일부러 피한다", weights: { SEU: 2, SY: 2, MEU: 2 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_spicy",
     cat: "food",
-    text: "맵고 뜨거운 음식(고추·마늘)은 어떤가요?",
+    text: "매운 음식(불닭·매운탕 수준)을 먹으면?",
     options: [
-      { text: "잘 맞고 먹으면 개운하다", weights: { SY: 2, SEU: 2, MY: 1 } },
-      { text: "속이 쓰리거나 열·땀이 확 오르며 힘들다", weights: { TY: 2, TEU: 2, GY: 1 } },
+      { text: "스트레스가 풀리고 속도 편하다 — 매운 걸 먹으면 오히려 개운하다", weights: { SY: 2, SEU: 2, MY: 1 } },
+      { text: "속이 쓰리고, 얼굴에 열이 확 오르거나 땀이 뻘뻘 나서 힘들다", weights: { TY: 2, TEU: 2, GY: 1 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_pork",
     cat: "food",
-    text: "돼지고기는 잘 맞나요?",
+    text: "돼지고기(수육·보쌈·삼겹살)를 먹은 뒤엔?",
     options: [
-      { text: "잘 맞는다", weights: { TY: 2, TEU: 2 } },
-      { text: "속이 불편하거나 무겁다", weights: { SY: 2, SEU: 2, MEU: 1 } },
+      { text: "잘 받는다 — 먹고 나서 속이 무겁거나 탈난 기억이 없다", weights: { TY: 2, TEU: 2 } },
+      { text: "유독 안 받는다 — 속이 무겁거나 설사·소화불량이 온 적이 있다", weights: { SY: 2, SEU: 2, MEU: 1 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_ginseng",
     cat: "food",
-    text: "인삼·홍삼을 먹으면 어떤가요?",
+    text: "홍삼·인삼을 일주일 이상 챙겨 먹어보면?",
     options: [
-      { text: "기운이 나고 몸이 좋아진다", weights: { MY: 2, MEU: 1, SY: 2, SEU: 1 } },
-      { text: "열이 오르거나 두통·불편함이 생긴다", weights: { TY: 2, TEU: 2, GY: 2, GEU: 1 } },
-      unsure("먹어본 적 없다 / 잘 모르겠다"),
+      { text: "확실히 기운이 나고 몸이 따뜻해지는 게 느껴진다", weights: { MY: 2, MEU: 1, SY: 2, SEU: 1 } },
+      { text: "얼굴이 붉어지고 열이 오르거나, 두통·가슴 답답함·불면이 생긴다", weights: { TY: 2, TEU: 2, GY: 2, GEU: 1 } },
+      unsure("먹어본 적 없다 / 차이를 모르겠다"),
     ],
   },
   {
     id: "q_seafood",
     cat: "food",
-    text: "조개·생선 등 해산물은 어떤가요?",
+    text: "회·조개·새우 같은 해산물을 먹으면?",
     options: [
-      { text: "잘 맞고 즐겨 먹는다", weights: { GY: 2, GEU: 2, TY: 1 } },
-      { text: "속이 불편하거나 잘 안 맞는다", weights: { MY: 2, MEU: 2 } },
+      { text: "늘 속이 편하고 몸도 가볍다 — 해산물이 잘 받는 편", weights: { GY: 2, GEU: 2, TY: 1 } },
+      { text: "배탈·두드러기가 나거나 유독 잘 안 받는다", weights: { MY: 2, MEU: 2 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_leafy",
     cat: "food",
-    text: "잎채소·쌈·생채소를 많이 먹으면 어떤가요?",
+    text: "쌈·샐러드 등 생채소를 한 끼 가득 먹으면?",
     options: [
-      { text: "개운하고 속이 편하다", weights: { GY: 2, GEU: 2 } },
-      { text: "속이 차가워지거나 더부룩하다", weights: { MY: 1, MEU: 1, SY: 1, SEU: 1 } },
+      { text: "속이 개운하고 변도 좋아진다", weights: { GY: 2, GEU: 2 } },
+      { text: "속이 차가워지는 느낌이거나 오히려 더부룩하다", weights: { MY: 1, MEU: 1, SY: 1, SEU: 1 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_coffee",
     cat: "food",
-    text: "커피를 마시면 어떤가요?",
+    text: "커피를 마시면? (하루 1~2잔 기준)",
     options: [
-      { text: "잘 맞고 즐겨 마신다", weights: { MY: 2, MEU: 1 } },
-      { text: "가슴이 두근거리거나 속쓰림·불면이 생긴다", weights: { GY: 2, GEU: 1, TY: 1 } },
-      unsure("보통이다"),
+      { text: "하루 2잔 이상 마셔도 잠·속에 지장이 없다", weights: { MY: 2, MEU: 1 } },
+      { text: "오후에 한 잔만 마셔도 가슴이 두근거리거나 밤잠을 설치고, 빈속엔 속이 쓰리다", weights: { GY: 2, GEU: 1, TY: 1 } },
+      unsure("보통이다 / 안 마신다"),
     ],
   },
   {
     id: "q_cold_fruit",
     cat: "food",
-    text: "참외·수박 등 시원한 과일은 어떤가요?",
+    text: "참외·수박을 배불리 먹으면?",
     options: [
-      { text: "잘 맞고 시원한 것이 좋다", weights: { TY: 2, TEU: 2, GY: 1 } },
-      { text: "먹으면 속이 차가워지고 불편하다", weights: { SY: 2, SEU: 2, MEU: 1 } },
+      { text: "아무 탈 없고 여름이면 제일 찾는 과일이다", weights: { TY: 2, TEU: 2, GY: 1 } },
+      { text: "배가 차가워지고 설사하거나 속이 불편했던 적이 있다", weights: { SY: 2, SEU: 2, MEU: 1 } },
       unsure("보통이다"),
     ],
   },
   {
     id: "q_sauna",
     cat: "food",
-    text: "뜨거운 탕·사우나로 땀을 뺀 뒤 컨디션은?",
+    text: "뜨거운 탕·사우나에 10분 이상 있다가 나오면?",
     options: [
-      { text: "땀을 빼고 나면 몸이 아주 개운하다", weights: { MY: 2, MEU: 1, SEU: 1 } },
-      { text: "땀을 많이 빼면 오히려 기운이 빠진다", weights: { SY: 2, GY: 1, GEU: 1 } },
-      unsure("시원한 곳에 있을 때가 더 좋다"),
+      { text: "몸이 확 풀리고 개운하다 — 사우나·반신욕 체질이다", weights: { MY: 2, MEU: 1, SEU: 1 } },
+      { text: "어지럽고 기운이 빠진다 — 오래 못 버티고 나오는 편", weights: { SY: 2, GY: 1, GEU: 1 } },
+      { text: "더운 곳 자체가 싫다 — 냉탕이나 시원한 곳이 컨디션에 훨씬 낫다", weights: { TY: 2, TEU: 1 } },
+      unsure(),
     ],
   },
 
@@ -253,10 +255,10 @@ const QUESTIONS = [
   {
     id: "q_allergy",
     cat: "other",
-    text: "약(특히 항생제)이나 특정 음식에 알레르기·과민반응이 있나요?",
+    text: "약(항생제·진통제 등)이나 특정 음식에 대한 반응은?",
     options: [
-      { text: "약·항생제나 특정 음식에 두드러기·부작용이 잘 생긴다", weights: { TEU: 3, GY: 2 } },
-      { text: "피부(아토피·두드러기)가 예민한 편이다", weights: { GY: 2, GEU: 1 } },
+      { text: "약을 먹고 두드러기·발진·붓기 같은 부작용을 실제로 겪은 적이 있다", weights: { TEU: 3, GY: 2 } },
+      { text: "약 부작용까진 아니지만, 아토피·두드러기·금속 알레르기 등 피부가 예민하다", weights: { GY: 2, GEU: 1 } },
       unsure("특별히 없는 편이다"),
     ],
   },

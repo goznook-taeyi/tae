@@ -32,6 +32,9 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # 저장소에 Pages가 꺼져 있으면 자동으로 활성화 (수동 설정 불필요)
+          enablement: true
 
       - name: Upload artifact (web/)
         uses: actions/upload-pages-artifact@v3

@@ -1,7 +1,7 @@
 name: Deploy site to GitHub Pages
 
-# web/ 정적 사이트를 GitHub Pages에 배포합니다.
-# 최초 1회: 저장소 Settings → Pages → Build and deployment → Source 를 "GitHub Actions" 로 설정하세요.
+# main의 web/ 를 gh-pages 브랜치로 동기화해 배포합니다.
+# (Pages 소스: gh-pages 브랜치 — 브랜치 방식은 추가 권한이 필요 없음)
 
 on:
   push:
@@ -12,11 +12,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# 동시 배포 방지 (진행 중 실행은 취소하지 않고 대기)
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -24,23 +21,19 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-        with:
-          # 저장소에 Pages가 꺼져 있으면 자동으로 활성화 (수동 설정 불필요)
-          enablement: true
-
-      - name: Upload artifact (web/)
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish web/ to gh-pages
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp -r web /tmp/site        # git rm 전에 대피 (rm이 web/까지 지움)
+          git checkout --orphan gh-pages
+          git rm -rfq .
+          cp -r /tmp/site/* .
+          touch .nojekyll
+          git add -A
+          git commit -m "deploy: ${GITHUB_SHA}"
+          git push -f origin gh-pages

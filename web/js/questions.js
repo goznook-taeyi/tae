@@ -69,7 +69,7 @@ const QUESTIONS = [
     cat: "coldheat",
     text: "여름과 겨울 중 어느 쪽이 유독 힘든가요?",
     options: [
-      { text: "여름이 힘들다 — 남들보다 더위를 심하게 타서 에어컨 없이 잠들기 어렵고, 겨울은 비교적 잘 견딘다", weights: { TY: 2, TEU: 2, MY: 1 } },
+      { text: "여름이 힘들다 — 남들보다 더위를 심하게 타서 에어컨 없이 잠들기 어렵고, 겨울은 비교적 잘 견딘다", weights: { TY: 2, TEU: 1, MY: 1 } },
       { text: "겨울이 힘들다 — 남들보다 추위를 심하게 타서 내복·전기장판을 챙기고, 여름은 비교적 잘 견딘다", weights: { SY: 2, SEU: 2, MEU: 1 } },
       unsure("둘 다 비슷하게 견딜 만하다"),
     ],
@@ -107,6 +107,16 @@ const QUESTIONS = [
     ],
   },
   {
+    id: "q_hungry",
+    cat: "digest",
+    text: "식사 속도와 공복감은 어떤가요?",
+    options: [
+      { text: "빨리 먹는 편이고, 밥을 먹어도 두어 시간이면 다시 배가 고프다", weights: { TY: 2 } },
+      { text: "천천히 먹는 편이고, 끼니를 걸러도 배고픔을 크게 못 느낀다", weights: { SY: 1, SEU: 1, GY: 1 } },
+      unsure("보통이다"),
+    ],
+  },
+  {
     id: "q_bowel",
     cat: "digest",
     text: "최근 1~2년, 대변 패턴은 어느 쪽인가요?",
@@ -134,7 +144,7 @@ const QUESTIONS = [
     cat: "food",
     text: "소고기·삼겹살을 배불리 먹은 '다음 날' 몸 상태는?",
     options: [
-      { text: "속이 편하고 오히려 힘이 난다", weights: { MY: 2, MEU: 2, SY: 1, SEU: 1 } },
+      { text: "확실히 힘이 난다 — 고기를 먹은 날과 안 먹은 날의 컨디션 차이가 느껴진다", weights: { MY: 2, MEU: 2, SY: 1, SEU: 1 } },
       { text: "속이 더부룩하거나, 몸이 무겁고 피부 트러블이 올라온다", weights: { GY: 2, GEU: 2 } },
       unsure("별 차이를 못 느낀다"),
     ],
@@ -144,7 +154,7 @@ const QUESTIONS = [
     cat: "food",
     text: "빵·면(밀가루)을 며칠 연달아 먹으면?",
     options: [
-      { text: "아무렇지 않다 — 밀가루를 즐겨 먹어도 몸에 표시가 안 난다", weights: { MY: 2, MEU: 2 } },
+      { text: "오히려 잘 받는다 — 빵·면으로 끼니를 채워도 든든하고 속이 편하다", weights: { MY: 2, MEU: 2 } },
       { text: "탈이 난다 — 잘 붓거나 더부룩하고, 밀가루를 끊었더니 몸이 가벼워진 경험이 있다", weights: { GY: 2, GEU: 2, SEU: 1 } },
       unsure("보통이다 / 잘 모르겠다"),
     ],
@@ -154,7 +164,7 @@ const QUESTIONS = [
     cat: "food",
     text: "우유 한 컵(200ml)을 마시면?",
     options: [
-      { text: "속이 편하다 — 우유·치즈·요거트를 즐겨 먹어도 문제없다", weights: { MY: 2, MEU: 1 } },
+      { text: "잘 받는다 — 우유·치즈를 즐겨 먹고, 마시면 오히려 속이 편안하다", weights: { MY: 2, MEU: 1 } },
       { text: "배가 부글거리거나 설사한다 — 유제품이 안 받는 편이다", weights: { GY: 2, GEU: 2, SEU: 1 } },
       unsure("보통이다"),
     ],
@@ -164,7 +174,7 @@ const QUESTIONS = [
     cat: "food",
     text: "얼음물·냉면·빙수 같은 찬 음식은?",
     options: [
-      { text: "한겨울에도 얼음물이 좋고, 먹어도 탈나지 않는다", weights: { TY: 2, TEU: 2 } },
+      { text: "한겨울에도 일부러 얼음물을 찾을 만큼 찬 것이 좋고, 먹어도 탈나지 않는다", weights: { TY: 2, TEU: 1 } },
       { text: "먹으면 배가 아프거나 설사한 일이 반복돼서 일부러 피한다", weights: { SEU: 2, SY: 2, MEU: 2 } },
       unsure("보통이다"),
     ],
@@ -175,7 +185,7 @@ const QUESTIONS = [
     text: "매운 음식(불닭·매운탕 수준)을 먹으면?",
     options: [
       { text: "스트레스가 풀리고 속도 편하다 — 매운 걸 먹으면 오히려 개운하다", weights: { SY: 2, SEU: 2, MY: 1 } },
-      { text: "속이 쓰리고, 얼굴에 열이 확 오르거나 땀이 뻘뻘 나서 힘들다", weights: { TY: 2, TEU: 2, GY: 1 } },
+      { text: "속이 쓰리고, 얼굴에 열이 확 오르거나 땀이 뻘뻘 나서 힘들다", weights: { TY: 2, TEU: 1, GY: 1 } },
       unsure("보통이다"),
     ],
   },
@@ -184,9 +194,9 @@ const QUESTIONS = [
     cat: "food",
     text: "돼지고기(수육·보쌈·삼겹살)를 먹은 뒤엔?",
     options: [
-      { text: "잘 받는다 — 먹고 나서 속이 무겁거나 탈난 기억이 없다", weights: { TY: 2, TEU: 2 } },
+      { text: "유독 잘 맞는다 — 지치면 돼지고기가 당기고, 먹고 나면 컨디션이 좋아진다", weights: { TY: 2, TEU: 1 } },
       { text: "유독 안 받는다 — 속이 무겁거나 설사·소화불량이 온 적이 있다", weights: { SY: 2, SEU: 2, MEU: 1 } },
-      unsure("보통이다"),
+      unsure("그냥 무난하다 — 특별히 좋지도 나쁘지도 않다"),
     ],
   },
   {
@@ -224,7 +234,7 @@ const QUESTIONS = [
     cat: "food",
     text: "커피를 마시면? (하루 1~2잔 기준)",
     options: [
-      { text: "하루 2잔 이상 마셔도 잠·속에 지장이 없다", weights: { MY: 2, MEU: 1 } },
+      { text: "잘 받는다 — 하루 2잔 이상 마셔도 잠·속에 지장이 없고 오히려 몸이 가뿐하다", weights: { MY: 2, MEU: 1 } },
       { text: "오후에 한 잔만 마셔도 가슴이 두근거리거나 밤잠을 설치고, 빈속엔 속이 쓰리다", weights: { GY: 2, GEU: 1, TY: 1 } },
       unsure("보통이다 / 안 마신다"),
     ],
@@ -234,9 +244,9 @@ const QUESTIONS = [
     cat: "food",
     text: "참외·수박을 배불리 먹으면?",
     options: [
-      { text: "아무 탈 없고 여름이면 제일 찾는 과일이다", weights: { TY: 2, TEU: 2, GY: 1 } },
+      { text: "탈이 없는 정도가 아니라, 먹으면 몸의 열이 내려가 편해진다 — 여름이면 제일 찾는 과일", weights: { TY: 2, TEU: 1, GY: 1 } },
       { text: "배가 차가워지고 설사하거나 속이 불편했던 적이 있다", weights: { SY: 2, SEU: 2, MEU: 1 } },
-      unsure("보통이다"),
+      unsure("그냥 무난하다 — 특별한 변화를 못 느낀다"),
     ],
   },
   {

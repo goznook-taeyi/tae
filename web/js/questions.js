@@ -58,7 +58,7 @@ const QUESTIONS = [
     text: "새로운 사람·상황을 만났을 때 나는?",
     options: [
       { text: "먼저 다가가고 표현이 빠른 외향형", weights: { TY: 1, TEU: 1, GEU: 1 } },
-      { text: "지켜본 뒤 천천히 마음을 여는 신중형", weights: { SY: 2, GY: 1, SEU: 1 } },
+      { text: "지켜본 뒤 천천히 마음을 여는 신중형", weights: { SY: 2, GY: 2, SEU: 1 } },
       unsure("상황에 따라 다르다"),
     ],
   },
@@ -90,7 +90,7 @@ const QUESTIONS = [
     text: "땀을 흘리고 나면 몸 상태가 어떤가요?",
     options: [
       { text: "흠뻑 흘리고 나면 개운하고 시원하다", weights: { MY: 3, MEU: 1 } },
-      { text: "땀이 적은 편이고, 많이 흘리면 오히려 지친다", weights: { SY: 2, SEU: 2 } },
+      { text: "땀이 적은 편이고, 많이 흘리면 오히려 지친다", weights: { SY: 2, SEU: 2, GY: 1, GEU: 1 } },
       unsure("땀은 보통이다"),
     ],
   },
@@ -118,6 +118,16 @@ const QUESTIONS = [
   },
 
   // ── 음식 반응 (8체질의 가장 중요한 단서) ─────────────────────
+  {
+    id: "q_diet",
+    cat: "food",
+    text: "전반적으로 어떤 식단이 몸에 더 잘 맞나요?",
+    options: [
+      { text: "채소·생선·해물 위주가 편하고, 고기는 부담스럽다", weights: { GY: 2, GEU: 2 } },
+      { text: "고기·뿌리채소가 든든하고, 날것·해물은 부담스럽다", weights: { MY: 2, MEU: 1, SY: 1, SEU: 1 } },
+      unsure("특별한 선호가 없다"),
+    ],
+  },
   {
     id: "q_meat",
     cat: "food",
@@ -195,6 +205,16 @@ const QUESTIONS = [
     options: [
       { text: "잘 맞고 즐겨 먹는다", weights: { GY: 2, GEU: 2, TY: 1 } },
       { text: "속이 불편하거나 잘 안 맞는다", weights: { MY: 2, MEU: 2 } },
+      unsure("보통이다"),
+    ],
+  },
+  {
+    id: "q_leafy",
+    cat: "food",
+    text: "잎채소·쌈·생채소를 많이 먹으면 어떤가요?",
+    options: [
+      { text: "개운하고 속이 편하다", weights: { GY: 2, GEU: 2 } },
+      { text: "속이 차가워지거나 더부룩하다", weights: { MY: 1, MEU: 1, SY: 1, SEU: 1 } },
       unsure("보통이다"),
     ],
   },

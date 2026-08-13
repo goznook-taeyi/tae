@@ -253,6 +253,26 @@ const QUESTIONS = [
 
   // ── 약물·기타 반응 ─────────────────────────────────────────
   {
+    id: "q_muscle",
+    cat: "other",
+    text: "고기·기름진 식사를 몇 주 이상 계속하면 몸은?",
+    options: [
+      { text: "오히려 다리에 힘이 빠지거나 쉽게 피로해진 적이 있다", weights: { GEU: 3, GY: 1 } },
+      { text: "먹을수록 힘이 나고 몸이 든든해진다", weights: { MY: 2, MEU: 1, SY: 1, SEU: 1 } },
+      unsure("그렇게 오래 계속해 본 적 없다 / 모르겠다"),
+    ],
+  },
+  {
+    id: "q_bp",
+    cat: "other",
+    text: "건강검진에서 혈압은 대체로 어느 쪽인가요?",
+    options: [
+      { text: "높은 편이라는 말을 들은 적 있다 (130/85 이상 언저리)", weights: { MY: 2, TY: 1 } },
+      { text: "낮은 편이다 (수축기 110 미만 언저리)", weights: { SY: 1, SEU: 1, GY: 1, MEU: 1 } },
+      unsure("정상 범위 / 잘 모르겠다"),
+    ],
+  },
+  {
     id: "q_allergy",
     cat: "other",
     text: "약(항생제·진통제 등)이나 특정 음식에 대한 반응은?",
@@ -263,3 +283,133 @@ const QUESTIONS = [
     ],
   },
 ];
+
+/*
+ * 정밀 확인(타이브레이커) 문항
+ * ------------------------------------------------------------------
+ * 기본 설문에서 1·2위 점수가 비슷하면(2위가 1위의 70% 이상),
+ * 그 두 체질만 가르는 아래 문항 3개를 추가로 묻고 최종 결과를 냅니다.
+ * 키는 두 체질 코드를 알파벳순으로 "|"로 이은 것입니다.
+ */
+const TIEBREAKERS = {
+  // 금양 vs 수양 — 둘 다 마르고 신중·땀 적음. 피부·해물·매운맛으로 가른다.
+  "GY|SY": { questions: [
+    { text: "피부는 어느 쪽인가요?", options: [
+      { text: "아토피·두드러기·트러블이 잘 생기는 예민 피부", weights: { GY: 2 } },
+      { text: "트러블이 거의 없는 무난한 피부", weights: { SY: 2 } },
+      unsure() ] },
+    { text: "생선회·해물을 자주 먹으면?", options: [
+      { text: "몸이 가볍고 잘 맞는다", weights: { GY: 2 } },
+      { text: "배가 차가워지거나 썩 잘 받지 않는다", weights: { SY: 2 } },
+      unsure() ] },
+    { text: "맵고 뜨거운 음식은?", options: [
+      { text: "속이 쓰리고 열이 올라 힘들다", weights: { GY: 2 } },
+      { text: "개운하고 잘 맞는다", weights: { SY: 2 } },
+      unsure() ] },
+  ]},
+  // 금양 vs 금음 — 같은 금 계열. 근육·육식 후 반응·약물 민감도로 가른다.
+  "GEU|GY": { questions: [
+    { text: "운동을 하면 몸은?", options: [
+      { text: "근육이 눈에 띄게 잘 붙고 다부져진다", weights: { GEU: 2 } },
+      { text: "근육이 잘 안 붙고 마른 체형이 유지된다", weights: { GY: 2 } },
+      unsure() ] },
+    { text: "육식을 오래 계속했을 때 먼저 오는 신호는?", options: [
+      { text: "다리·몸에 힘이 빠지고 쉽게 피로해진다", weights: { GEU: 2 } },
+      { text: "피부 트러블·알레르기 증상이 먼저 온다", weights: { GY: 2 } },
+      unsure() ] },
+    { text: "약(항생제 등) 부작용 경험은?", options: [
+      { text: "거의 없다", weights: { GEU: 2 } },
+      { text: "겪은 적이 있거나 약이 예민하게 듣는다", weights: { GY: 2 } },
+      unsure() ] },
+  ]},
+  // 목양 vs 토양 — 둘 다 대식·건장. 해물·찬 것·커피로 가른다.
+  "MY|TY": { questions: [
+    { text: "생선회·조개·새우는?", options: [
+      { text: "잘 안 받거나 별로 당기지 않는다", weights: { MY: 2 } },
+      { text: "잘 받고 즐겨 먹는다", weights: { TY: 2 } },
+      unsure() ] },
+    { text: "얼음물·찬 음식은?", options: [
+      { text: "배탈이 나거나 꺼리는 편", weights: { MY: 2 } },
+      { text: "아주 좋아하고 탈도 없다", weights: { TY: 2 } },
+      unsure() ] },
+    { text: "커피는?", options: [
+      { text: "여러 잔 마셔도 잘 받는다", weights: { MY: 2 } },
+      { text: "두근거림·속쓰림이 온다", weights: { TY: 2 } },
+      unsure() ] },
+  ]},
+  // 목양 vs 목음 — 같은 목 계열. 설사·아랫배·땀으로 가른다.
+  "MEU|MY": { questions: [
+    { text: "찬 음식·과식 뒤에는?", options: [
+      { text: "설사가 잦다 — 배가 예민하게 반응한다", weights: { MEU: 2 } },
+      { text: "별 탈 없이 지나간다", weights: { MY: 2 } },
+      unsure() ] },
+    { text: "아랫배는?", options: [
+      { text: "평소에도 차고, 따뜻하게 하면 편하다", weights: { MEU: 2 } },
+      { text: "특별히 차지 않다", weights: { MY: 2 } },
+      unsure() ] },
+    { text: "땀은?", options: [
+      { text: "보통이거나 적은 편", weights: { MEU: 2 } },
+      { text: "아주 많고, 빼고 나면 개운하다", weights: { MY: 2 } },
+      unsure() ] },
+  ]},
+  // 수양 vs 수음 — 같은 수 계열. 체함·대변·식사량으로 가른다.
+  "SEU|SY": { questions: [
+    { text: "체하는 일은?", options: [
+      { text: "조금만 잘못 먹어도 잘 체한다", weights: { SEU: 2 } },
+      { text: "입은 짧지만 체하는 일은 드물다", weights: { SY: 2 } },
+      unsure() ] },
+    { text: "대변은?", options: [
+      { text: "무르거나 소화가 덜 된 채 나올 때가 많다", weights: { SEU: 2 } },
+      { text: "변비 쪽이고, 며칠 못 가도 잘 참는다", weights: { SY: 2 } },
+      unsure() ] },
+    { text: "식사량은?", options: [
+      { text: "밥 반 공기도 버거울 때가 있다", weights: { SEU: 2 } },
+      { text: "적게 먹는 편이지만 한 공기는 문제없다", weights: { SY: 2 } },
+      unsure() ] },
+  ]},
+  // 토양 vs 토음 — 약물 쇼크 이력이 결정적.
+  "TEU|TY": { questions: [
+    { text: "페니실린 등 항생제로 쇼크·심한 발진을 겪은 적이 있나요?", options: [
+      { text: "있다 (본인이 직접 겪음)", weights: { TEU: 3 } },
+      { text: "없다", weights: { TY: 2 } },
+      unsure("약을 그리 써본 적 없다") ] },
+    { text: "가족·의사에게 '약이 예민하게 듣는 체질'이라는 말을 들은 적은?", options: [
+      { text: "있다", weights: { TEU: 2 } },
+      { text: "없다 — 약이 무난하게 듣는 편", weights: { TY: 2 } },
+      unsure() ] },
+    { text: "위장은?", options: [
+      { text: "튼튼하지만 몸 전체가 예민한 편", weights: { TEU: 2 } },
+      { text: "튼튼하고 무던한 편 — 뭐든 잘 먹고 잘 소화한다", weights: { TY: 2 } },
+      unsure() ] },
+  ]},
+  // 목음 vs 수음 — 우유·밀가루·식사량으로 가른다.
+  "MEU|SEU": { questions: [
+    { text: "우유·밀가루는?", options: [
+      { text: "잘 받는 편이다", weights: { MEU: 2 } },
+      { text: "안 받는다 — 먹으면 더부룩하거나 탈난다", weights: { SEU: 2 } },
+      unsure() ] },
+    { text: "식사량은?", options: [
+      { text: "보통 이상은 먹는다", weights: { MEU: 2 } },
+      { text: "소식이 필수 — 조금만 넘겨도 체한다", weights: { SEU: 2 } },
+      unsure() ] },
+    { text: "커피·유제품이 든 라떼는?", options: [
+      { text: "무난하게 잘 마신다", weights: { MEU: 2 } },
+      { text: "속이 불편해서 피하게 된다", weights: { SEU: 2 } },
+      unsure() ] },
+  ]},
+  // 금음 vs 토양 — 열·돼지고기·근육으로 가른다.
+  "GEU|TY": { questions: [
+    { text: "몸의 열은?", options: [
+      { text: "많은 편 — 더위를 심하게 타고 찬 것이 늘 좋다", weights: { TY: 2 } },
+      { text: "보통 — 열이 많다는 느낌은 없다", weights: { GEU: 2 } },
+      unsure() ] },
+    { text: "돼지고기는?", options: [
+      { text: "잘 받는다", weights: { TY: 2 } },
+      { text: "부담스럽다 — 고기 자체가 몸에 안 맞는 느낌", weights: { GEU: 2 } },
+      unsure() ] },
+    { text: "운동하면 근육이?", options: [
+      { text: "눈에 띄게 잘 붙는다", weights: { GEU: 2 } },
+      { text: "그럭저럭 보통", weights: { TY: 2 } },
+      unsure() ] },
+  ]},
+};

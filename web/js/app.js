@@ -302,7 +302,7 @@
     var ratio = (runnerUp && runnerUp.score > 0) ? runnerUp.score / top.score : 0;
     var conf;
     if (top.score < 8 || ratio >= 0.85) {
-      conf = { key: "low", label: "낮음", note: "결과가 갈릴 수 있어요. 아래 ‘헷갈리기 쉬운 체질’을 꼭 함께 확인하세요." };
+      conf = { key: "low", label: "낮음", note: "특징이 옅게 나타났어요. 몸이 건강할수록 체질 신호가 잘 드러나지 않으니, 결과를 확정하지 말고 아래 ‘헷갈리기 쉬운 체질’과 음식 반응을 함께 확인하세요." };
     } else if (ratio >= 0.7) {
       conf = { key: "mid", label: "보통", note: "대체로 이 방향이지만, 비슷한 체질도 함께 참고하세요." };
     } else {

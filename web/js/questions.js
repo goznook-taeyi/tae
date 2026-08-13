@@ -19,6 +19,7 @@ const QUESTION_CATEGORIES = {
   temper:    { label: "성격·기질",   hint: "직장·모임에서 실제로 하는 행동을 떠올려 답하세요." },
   coldheat:  { label: "한열(추위·더위)", hint: "감기 등 아플 때 말고, 평소 계절을 날 때의 경향입니다." },
   digest:    { label: "소화·배변",   hint: "최근 1~2년의 평균적인 패턴으로 답하세요." },
+  baseline:  { label: "소증(평소 바탕 신호)", hint: "아프지 않고 건강할 때도 나타나는 '나의 기본 상태'입니다. 증상이 아니라 평소 습관·바탕으로 답하세요." },
   food:      { label: "음식 반응",   hint: "좋아하는지가 아니라, 먹고 난 '몇 시간 뒤~다음 날 몸 상태'가 기준입니다." },
   other:     { label: "약물·기타",   hint: "약이나 특정 물질에 대한 몸의 민감도입니다." },
 };
@@ -125,6 +126,38 @@ const QUESTIONS = [
       { text: "변비 경향 — 2~3일에 1회일 때도 있지만 그래도 크게 불편하지 않고 잘 참는 편이다", weights: { SY: 2 } },
       { text: "하루 1회, 굵고 시원하게 규칙적으로 본다", weights: { GEU: 2, TY: 1, MY: 1 } },
       unsure(),
+    ],
+  },
+
+  // ── 소증: 건강해도 드러나는 평소 바탕 신호 ───────────────────
+  {
+    id: "q_thirst",
+    cat: "baseline",
+    text: "평소 물 마시는 습관은? (건강할 때 기준)",
+    options: [
+      { text: "물을 많이 마신다 — 늘 물병·음료를 곁에 두고, 갈증을 자주 느낀다", weights: { TY: 1, TEU: 1 } },
+      { text: "물 생각이 잘 안 난다 — 하루 한두 컵으로도 갈증을 거의 못 느낀다", weights: { SY: 1, SEU: 1, MEU: 1 } },
+      unsure("보통이다"),
+    ],
+  },
+  {
+    id: "q_urine",
+    cat: "baseline",
+    text: "소변 습관은 어느 쪽인가요?",
+    options: [
+      { text: "자주 가는 편 — 물을 마시면 금방 요의가 오고, 자다가 화장실 때문에 깨는 날도 있다", weights: { TY: 2, TEU: 1 } },
+      { text: "오래 참아도 불편하지 않고, 횟수도 적은 편이다", weights: { SY: 2 } },
+      unsure("보통이다"),
+    ],
+  },
+  {
+    id: "q_voice",
+    cat: "baseline",
+    text: "목소리와 말하기는? (건강할 때 기준)",
+    options: [
+      { text: "목소리가 크고 또렷하다 — 오래 말하거나 노래를 불러도 잘 지치지 않는다", weights: { GEU: 2, TY: 1 } },
+      { text: "오래 말하면 목이 잠기고 기운이 빠진다 — 말을 아끼게 되는 편", weights: { MY: 2, MEU: 1 } },
+      unsure("보통이다"),
     ],
   },
 
